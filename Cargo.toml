@@ -1,0 +1,31 @@
+[package]
+name = "clitest"
+license = "MIT/Apache-2.0"
+version = "0.1.0"
+authors = ["Matt Mastracci <matthew@mastracci.com>"]
+edition = "2024"
+description = "CLI-based testing."
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+shellish_parse = "2"
+thiserror = "2"
+grok = "2"
+onig = { version = "6.4", default-features = false }
+derive_more = { version = "2", features = ["display", "debug"] }
+termcolor = "1"
+termsize = "0.1"
+
+[lib]
+name = "clitest"
+path = "src/lib.rs"
+
+[[bin]]
+name = "clitest"
+path = "src/main.rs"
+
+[[test]]
+name = "integration-tests"
+path = "tests/integration_tests.rs"
+harness = false

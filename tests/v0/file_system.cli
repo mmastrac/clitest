@@ -1,0 +1,49 @@
+#!/usr/bin/env clitest --version=0
+
+# Functional tests for project linking
+# Key:
+#   - # <comment>
+#   - $ <command>
+#   - ? <grok pattern>
+#   - ! <literal>
+#   - repeat { ... }
+#   - option { ... }
+#   - ignore { ... }
+#   - choice { ... }
+#   - unordered { ... }
+
+#pattern FILENAME [\w\-\.]+
+
+$ rm -rf /tmp/testing-dir || echo "no dir to remove"
+$ mkdir /tmp/testing-dir
+
+$ cd /tmp/testing-dir && ls -al
+! total %{NUMBER}
+! %{GREEDYDATA} .
+! %{GREEDYDATA} ..
+
+$ echo "hello world" > /tmp/testing-dir/file1
+$ echo "world" > /tmp/testing-dir/file2
+
+$ ls -al /tmp/testing-dir
+!!!
+total %{NUMBER}
+%{GREEDYDATA} .
+%{GREEDYDATA} ..
+%{GREEDYDATA} file1
+%{GREEDYDATA} file2
+!!!
+
+# Test with a pattern that matches a filename
+$ ls -al /tmp/testing-dir
+! total %{NUMBER}
+repeat {
+    ! %{GREEDYDATA} %{FILENAME}
+}
+
+# Test with a pattern that matches a filename
+$ ls -al /tmp/testing-dir 1>&2
+! total %{NUMBER}
+repeat {
+    ! %{GREEDYDATA} %{FILENAME}
+}

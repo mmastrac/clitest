@@ -1,0 +1,115 @@
+{
+    "name": "Functional Tests",
+    "scopeName": "source.functional-tests",
+    "fileTypes": [".cli"],
+    "patterns": [
+        {
+            "name": "comment.line.number-sign.functional-tests",
+            "match": "^\\s*#.*$"
+        },
+        {
+            "name": "keyword.control.command.functional-tests",
+            "match": "^\\s*(\\$)(\\s+)(.*)$",
+            "captures": {
+                "1": {
+                    "name": "keyword.operator.command.functional-tests"
+                },
+                "3": {
+                    "patterns": [
+                        {
+                            "include": "source.shell"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "meta.pattern.functional-tests",
+            "match": "^\\s*(\\?)(\\s+)(.*)$",
+            "captures": {
+                "1": {
+                    "name": "keyword.operator.pattern.functional-tests"
+                },
+                "3": {
+                    "patterns": [
+                        {
+                            "name": "variable.other.grok.functional-tests",
+                            "match": "%\\{[A-Za-z0-9_]+\\}"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "meta.literal.functional-tests",
+            "match": "^\\s*(\\!)(\\s+)(.*+)?$",
+            "captures": {
+                "1": {
+                    "name": "keyword.operator.literal.functional-tests"
+                },
+                "3": {
+                    "name": "string.unquoted.literal.functional-tests"
+                }
+            }
+        },
+        {
+            "name": "keyword.control.block.repeat.functional-tests",
+            "match": "^\\s*repeat\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "keyword.control.block.optional.functional-tests",
+            "match": "^\\s*optional\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "keyword.control.block.choice.functional-tests",
+            "match": "^\\s*choice\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "keyword.control.block.unordered.functional-tests",
+            "match": "^\\s*unordered\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "keyword.control.block.sequence.functional-tests",
+            "match": "^\\s*sequence\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "keyword.control.block.ignore.functional-tests",
+            "match": "^\\s*ignore\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "keyword.control.block.reject.functional-tests",
+            "match": "^\\s*reject\\s*\\{\\s*$",
+            "end": "^\\s*\\}\\s*$"
+        },
+        {
+            "name": "string.quoted.triple.functional-tests",
+            "begin": "^\\s*!!!\\s*$",
+            "end": "^\\s*!!!\\s*$"
+        },
+        {
+            "name": "string.quoted.triple.functional-tests",
+            "begin": "^\\s*\\?\\?\\?\\s*$",
+            "end": "^\\s*\\?\\?\\?\\s*$",
+            "patterns": [
+                {
+                    "name": "variable.other.grok.functional-tests",
+                    "match": "%\\{[A-Za-z0-9_]+\\}"
+                }
+            ]
+        },
+        {
+            "name": "variable.other.environment.functional-tests",
+            "match": "\\$[A-Za-z0-9_]+"
+        },
+        {
+            "name": "keyword.control.directive.functional-tests",
+            "match": "^\\s*%[A-Z_]+(\\s\\w+)?\\s*$"
+        }
+    ]
+}

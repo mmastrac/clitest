@@ -1,0 +1,53 @@
+#!/usr/bin/env clitest --version=0
+
+$ echo "a\nb\nc\n"
+!!!
+a
+b
+c
+
+!!!
+$ echo "a\nb\nc\n"
+! a
+! b
+! c
+!
+
+$ echo "a
+b
+c
+"
+!!!
+a
+b
+c
+
+!!!
+
+$ echo a\
+b\
+c
+!!!
+abc
+!!!
+
+$ echo "a\nb\nc"
+%SET ENV_VAR
+*
+
+$ echo "$ENV_VAR"
+!!!
+a
+b
+c
+!!!
+
+$ VAR2="a\nb\nc" sh -c 'echo "$VAR2"'
+!!!
+a
+b
+c
+!!!
+
+$ echo "%{}"
+! %{}

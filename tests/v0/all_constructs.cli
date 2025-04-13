@@ -1,0 +1,58 @@
+#!/usr/bin/env clitest --version=0
+
+#   - # <comment>
+#   - $ <command>
+#   - ? <grok pattern>
+#   - ! <literal>
+#   - repeat { ... }
+#   - option { ... }
+#   - choice { ... }
+#   - unordered { ... }
+#   - sequence { ... }
+#   - ignore { ... }
+#   - reject { ... }
+
+$ echo "a\nb\nc"
+repeat {
+    choice {
+        ! a
+        ! b
+        ! c
+    }
+}
+
+$ echo "a\nb\nc"
+unordered {
+    ! c
+    ! a
+    ! b
+}
+
+$ echo "a\nb\nc"
+sequence {
+    ! a
+    sequence {
+        ! b
+        sequence {
+            ! c
+        }
+    }
+}
+
+$ echo "a\nb\nc"
+! a
+optional {
+    ! doesn't happen!!
+}
+! b
+! c
+
+$ echo "a\nWARNING: UH OH\nb\nc"
+ignore {
+    ? WARNING: %{DATA}
+}
+!!!
+a
+b
+c
+!!!

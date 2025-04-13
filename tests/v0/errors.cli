@@ -1,0 +1,14 @@
+#!/usr/bin/env clitest --version=0
+
+$ exit 1
+%EXIT 1
+
+$ exit 1
+%EXIT any
+
+$ exit 0
+%EXIT any
+
+$ echo "a"
+%EXPECT_FAILURE
+! b

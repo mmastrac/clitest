@@ -1,0 +1,29 @@
+#!/usr/bin/env clitest --version=0
+
+$ echo "[LOG] Hello, world!"
+! [LOG] %{GREEDYDATA}
+
+$ echo "[LOG] Hello, world!"
+! [LOG] Hello, world!
+
+$ echo "[LOG] Hello, world!"
+? \[LOG\] %{GREEDYDATA}
+
+$ echo "[LOG] Hello, world!"
+? \[%{log=(LOG)}\] %{GREEDYDATA}
+
+$ echo "[LOG] Hello, world!"
+%EXPECT_FAILURE
+! [LOG]
+
+$ echo "[LOG] Hello, world!"
+%EXPECT_FAILURE
+! [%{DATA}]
+
+$ echo "[LOG] Hello, world!"
+%EXPECT_FAILURE
+? \[LOG\]
+
+$ echo "[LOG] Hello, world!"
+%EXPECT_FAILURE
+? \[%{DATA}\]

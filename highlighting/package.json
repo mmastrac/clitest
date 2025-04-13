@@ -1,0 +1,43 @@
+{
+    "name": "functional-tests",
+    "displayName": "Functional Tests",
+    "description": "Language support for Functional Tests (.cli files)",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "*"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/"
+    },
+    "contributes": {
+        "languages": [
+            {
+                "id": "functional-tests",
+                "aliases": [
+                    "Functional Tests",
+                    "cli"
+                ],
+                "extensions": [
+                    ".cli"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "functional-tests",
+                "scopeName": "source.functional-tests",
+                "path": "./functional-tests.tmLanguage.json",
+                "balancedBracketScopes": [
+                    "*"
+                ],
+                "unbalancedBracketScopes": [
+                    "string.unquoted.literal.functional-tests",
+                    "keyword.control.literal.functional-tests",
+                    "comment"
+                ]
+            }
+        ]
+    }
+}
