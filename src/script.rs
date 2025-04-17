@@ -335,7 +335,19 @@ impl OutputPattern {
             OutputPattern::Pattern(script_line, pattern_string, pattern) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
-                    if let Some(matches) = pattern.match_against(&line.text) {
+                    let text = line.text.clone();
+                    // Don't print panic backtraces
+                    let res = match std::panic::catch_unwind(|| pattern.match_against(&text)) {
+                        Ok(res) => res,
+                        Err(_) => {
+                            return Err(OutputPatternMatchFailure {
+                                script_line: *script_line,
+                                pattern_type: "pattern",
+                                output_line: Some(line),
+                            });
+                        }
+                    };
+                    if let Some(matches) = res {
                         context.trace(&format!(
                             "pattern match: {:?} =~ {pattern_string:?}",
                             line.text

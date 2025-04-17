@@ -1,0 +1,5 @@
+#!/usr/bin/env clitest --version=0
+
+$ echo "Path: /AAAAA/BBBBB/CCCCC/DDDDDDDDDDDDDD EEEEEEEEEEEEEEEEEEEEEEEE/"
+%EXPECT_FAILURE
+! Path: %{PATH}
