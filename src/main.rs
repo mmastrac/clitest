@@ -60,6 +60,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
 
+    let mut failed = 0;
+    let total = script_files.len();
+
     for script in script_files {
         std::env::set_current_dir(&script.script_dir).expect("failed to set current directory");
 
@@ -84,8 +87,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!();
                 cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
                 cprintln!(fg = Color::Red, "FAILED");
+                failed += 1;
             }
         }
     }
+
+    if failed > 0 {
+        cprintln!(fg = Color::Red, "{failed}/{total} test(s) failed");
+        std::process::exit(1);
+    } else {
+        cprintln!(fg = Color::Green, "{total} test(s) passed");
+    }
+
     Ok(())
 }
