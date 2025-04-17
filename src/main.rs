@@ -1,7 +1,8 @@
 use clap::Parser;
 use parser::v0::parse_script;
-use script::ScriptRunArgs;
+use script::{Script, ScriptRunArgs};
 use std::path::PathBuf;
+use termcolor::Color;
 
 mod command;
 mod parser;
@@ -12,20 +13,12 @@ mod term;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Path to the script to run
-    #[arg(long, value_hint = clap::ValueHint::FilePath)]
-    script: PathBuf,
+    #[arg(value_hint = clap::ValueHint::FilePath)]
+    scripts: Vec<PathBuf>,
 
     /// Delay between steps
     #[arg(long)]
     delay_steps: Option<u64>,
-
-    /// Regenerate test data
-    #[arg(long)]
-    regenerate: bool,
-
-    /// Explain the script
-    #[arg(long)]
-    explain: bool,
 
     /// Ignore exit codes
     #[arg(long)]
@@ -40,31 +33,59 @@ struct Args {
     quiet: bool,
 }
 
+struct ScriptToRun {
+    original_path: PathBuf,
+    script_dir: PathBuf,
+    script: Script,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let script_file = args.script;
-    let script = std::fs::read_to_string(&script_file).expect("failed to read script");
+    let script_files = args
+        .scripts
+        .iter()
+        .map(|path| {
+            let canonical_path = path.canonicalize()?;
+            let script_dir = canonical_path
+                .parent()
+                .ok_or("failed to get script directory")?
+                .to_path_buf();
+            let script = parse_script(&std::fs::read_to_string(path)?)?;
+            Ok(ScriptToRun {
+                original_path: path.clone(),
+                script_dir,
+                script,
+            })
+        })
+        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
 
-    let canonical_dir = script_file
-        .canonicalize()
-        .expect("failed to canonicalize script file");
-    let script_dir = canonical_dir
-        .parent()
-        .expect("failed to get script directory");
-    std::env::set_current_dir(script_dir).expect("failed to set current directory");
+    for script in script_files {
+        std::env::set_current_dir(&script.script_dir).expect("failed to set current directory");
 
-    let script = parse_script(&script).expect("failed to parse script");
+        let args = ScriptRunArgs {
+            delay_steps: args.delay_steps,
+            ignore_exit_codes: args.ignore_exit_codes,
+            ignore_matches: args.ignore_matches,
+            quiet: args.quiet,
+        };
 
-    let args = ScriptRunArgs {
-        delay_steps: args.delay_steps,
-        regenerate: args.regenerate,
-        explain: args.explain,
-        ignore_exit_codes: args.ignore_exit_codes,
-        ignore_matches: args.ignore_matches,
-        quiet: args.quiet,
-    };
-
-    script.run(args)?;
+        if args.quiet {
+            cprint!(fg = Color::Cyan, "{} ... ", script.original_path.display());
+            script.script.run(args)?;
+            cprintln!(fg = Color::Green, "OK");
+        } else {
+            cprintln!(fg = Color::Cyan, "{}", script.original_path.display());
+            println!();
+            if script.script.run(args).is_ok() {
+                cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
+                cprintln!(fg = Color::Green, "PASSED");
+            } else {
+                println!();
+                cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
+                cprintln!(fg = Color::Red, "FAILED");
+            }
+        }
+    }
     Ok(())
 }

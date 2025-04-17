@@ -32,8 +32,6 @@ fn main() {
             total += 1;
             if let Err(e) = script.run(ScriptRunArgs {
                 delay_steps: None,
-                regenerate: false,
-                explain: false,
                 ignore_exit_codes: false,
                 ignore_matches: false,
                 quiet: true,

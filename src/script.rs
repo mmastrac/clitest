@@ -136,8 +136,6 @@ pub struct Script {
 
 pub struct ScriptRunArgs {
     pub delay_steps: Option<u64>,
-    pub regenerate: bool,
-    pub explain: bool,
     pub ignore_exit_codes: bool,
     pub ignore_matches: bool,
     pub quiet: bool,
