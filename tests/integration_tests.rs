@@ -1,7 +1,14 @@
-use clitest::{cprint, cprintln, parser::parse_script, script::ScriptRunArgs, term::Color};
+use clitest::{
+    cprint, cprintln,
+    parser::parse_script,
+    script::ScriptRunArgs,
+    term::{self, Color},
+};
 use std::path::Path;
 
 fn main() {
+    term::ensure_panic_hook();
+
     let mut total = 0;
     let mut failed = 0;
     println!();

@@ -5,6 +5,23 @@ use termcolor::{ColorChoice, StandardStream};
 pub static STDOUT: std::sync::LazyLock<Mutex<StandardStream>> =
     std::sync::LazyLock::new(|| Mutex::new(StandardStream::stdout(ColorChoice::Auto)));
 
+/// We need to filter out onig panic messages.
+pub fn ensure_panic_hook() {
+    static PANIC_HOOK_LOCK: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    PANIC_HOOK_LOCK.get_or_init(|| {
+        let old_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            let payload = panic_info.payload();
+            if let Some(s) = payload.downcast_ref::<String>() {
+                if s.contains("Onig: Regex search error:") {
+                    return;
+                }
+            }
+            old_hook(panic_info);
+        }));
+    });
+}
+
 #[macro_export]
 macro_rules! println {
     ($($arg:tt)*) => {

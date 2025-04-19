@@ -31,6 +31,10 @@ struct Args {
     /// Quiet
     #[arg(long)]
     quiet: bool,
+
+    /// Version (used for shebang only)
+    #[arg(long, hide = true)]
+    version: bool,
 }
 
 struct ScriptToRun {
@@ -40,6 +44,8 @@ struct ScriptToRun {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    term::ensure_panic_hook();
+
     let args = Args::parse();
 
     let script_files = args

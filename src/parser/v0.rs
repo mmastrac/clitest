@@ -193,7 +193,7 @@ pub fn parse_output_pattern(
     pattern: &[String],
     grok: &mut Grok,
 ) -> Result<OutputPattern, ScriptError> {
-    let (mut patterns, ignore, rest) = parse_maybe_block(false, pattern, grok)?;
+    let (mut patterns, ignore, reject, rest) = parse_maybe_block(false, pattern, grok)?;
     patterns.push(OutputPattern::End);
     let pattern = if patterns.len() == 1 {
         patterns.into_iter().next().unwrap()
@@ -212,13 +212,42 @@ pub fn parse_output_pattern(
     }
 }
 
+fn parse_next(
+    block: bool,
+    pattern: &mut &[String],
+    grok: &mut Grok,
+    make_pattern: impl Fn(Vec<OutputPattern>) -> OutputPattern,
+) -> Result<OutputPattern, ScriptError> {
+    let (subpatterns, ignore, reject, rest) = parse_maybe_block(block, pattern, grok)?;
+    let new_pattern = make_pattern(subpatterns);
+    *pattern = rest;
+    if ignore.is_empty() {
+        Ok(new_pattern)
+    } else {
+        Ok(OutputPattern::Ignore(
+            0,
+            Arc::new(ignore),
+            Box::new(new_pattern),
+        ))
+    }
+}
+
 fn parse_maybe_block<'s, 't>(
     block: bool,
     mut pattern: &'s [String],
     grok: &mut Grok,
-) -> Result<(Vec<OutputPattern>, Vec<OutputPattern>, &'s [String]), ScriptError> {
+) -> Result<
+    (
+        Vec<OutputPattern>,
+        Vec<OutputPattern>,
+        Vec<OutputPattern>,
+        &'s [String],
+    ),
+    ScriptError,
+> {
     let mut patterns = vec![];
     let mut ignore = vec![];
+    let mut reject = vec![];
     while let Some((line, rest)) = pattern.split_first() {
         let line = line.trim();
         pattern = rest;
@@ -226,15 +255,17 @@ fn parse_maybe_block<'s, 't>(
             continue;
         } else if line == "*" {
             // Recursively parse the rest of the pattern, stealing the first item for the Any pattern
-            let (mut subpatterns, next_ignore, rest) = parse_maybe_block(block, pattern, grok)?;
+            let (mut subpatterns, next_ignore, next_reject, rest) =
+                parse_maybe_block(block, pattern, grok)?;
             ignore.extend(next_ignore);
+            reject.extend(next_reject);
             if subpatterns.is_empty() {
                 patterns.push(OutputPattern::Any(0, None));
             } else {
                 patterns.push(OutputPattern::Any(0, Some(Box::new(subpatterns.remove(0)))));
                 patterns.extend(subpatterns);
             }
-            return Ok((patterns, ignore, rest));
+            return Ok((patterns, ignore, reject, rest));
         } else if line.starts_with("!!!") {
             while let Some((line, rest)) = pattern.split_first() {
                 pattern = rest;
@@ -260,81 +291,49 @@ fn parse_maybe_block<'s, 't>(
         } else if line.starts_with("? ") {
             patterns.push(parse_pattern_line(grok, &line[2..], '?')?);
         } else if line == "}" {
-            return Ok((patterns, ignore, rest));
+            return Ok((patterns, ignore, reject, rest));
         } else if line.starts_with("repeat {") {
-            let (subpatterns, ignore, rest) = parse_maybe_block(true, rest, grok)?;
-            let new_pattern =
-                OutputPattern::Repeat(0, Box::new(OutputPattern::Sequence(0, subpatterns)));
-            if ignore.is_empty() {
-                patterns.push(new_pattern);
-            } else {
-                patterns.push(OutputPattern::Ignore(
-                    0,
-                    Arc::new(ignore),
-                    Box::new(new_pattern),
-                ));
-            }
-            pattern = rest;
+            let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
+                OutputPattern::Repeat(0, Box::new(OutputPattern::Sequence(0, subpatterns)))
+            })?;
+            patterns.push(new_pattern);
         } else if line.starts_with("choice {") {
-            let (subpatterns, ignore, rest) = parse_maybe_block(true, rest, grok)?;
-            let new_pattern = OutputPattern::Choice(0, subpatterns);
-            if ignore.is_empty() {
-                patterns.push(new_pattern);
-            } else {
-                patterns.push(OutputPattern::Ignore(
-                    0,
-                    Arc::new(ignore),
-                    Box::new(new_pattern),
-                ));
-            }
-            pattern = rest;
+            let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
+                OutputPattern::Choice(0, subpatterns)
+            })?;
+            patterns.push(new_pattern);
         } else if line.starts_with("unordered {") {
-            let (subpatterns, ignore, rest) = parse_maybe_block(true, rest, grok)?;
-            let new_pattern = OutputPattern::Unordered(0, subpatterns);
-            if ignore.is_empty() {
-                patterns.push(new_pattern);
-            } else {
-                patterns.push(OutputPattern::Ignore(
-                    0,
-                    Arc::new(ignore),
-                    Box::new(new_pattern),
-                ));
-            }
-            pattern = rest;
+            let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
+                OutputPattern::Unordered(0, subpatterns)
+            })?;
+            patterns.push(new_pattern);
         } else if line.starts_with("ignore {") {
-            let (subpatterns, nest_ignore, rest) = parse_maybe_block(true, rest, grok)?;
+            let (subpatterns, nest_ignore, nest_reject, rest) =
+                parse_maybe_block(true, rest, grok)?;
             if !nest_ignore.is_empty() {
                 return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
             }
             ignore.extend(subpatterns);
             pattern = rest;
+        } else if line.starts_with("reject {") {
+            let (subpatterns, nest_ignore, nest_reject, rest) =
+                parse_maybe_block(true, rest, grok)?;
+
+            if !nest_ignore.is_empty() {
+                return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
+            }
+            reject.extend(subpatterns);
+            pattern = rest;
         } else if line.starts_with("sequence {") {
-            let (subpatterns, ignore, rest) = parse_maybe_block(true, rest, grok)?;
-            let new_pattern = OutputPattern::Sequence(0, subpatterns);
-            if ignore.is_empty() {
-                patterns.push(new_pattern);
-            } else {
-                patterns.push(OutputPattern::Ignore(
-                    0,
-                    Arc::new(ignore),
-                    Box::new(new_pattern),
-                ));
-            }
-            pattern = rest;
+            let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
+                OutputPattern::Sequence(0, subpatterns)
+            })?;
+            patterns.push(new_pattern);
         } else if line.starts_with("optional {") {
-            let (subpatterns, ignore, rest) = parse_maybe_block(true, rest, grok)?;
-            let new_pattern =
-                OutputPattern::Optional(0, Box::new(OutputPattern::Sequence(0, subpatterns)));
-            if ignore.is_empty() {
-                patterns.push(new_pattern);
-            } else {
-                patterns.push(OutputPattern::Ignore(
-                    0,
-                    Arc::new(ignore),
-                    Box::new(new_pattern),
-                ));
-            }
-            pattern = rest;
+            let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
+                OutputPattern::Optional(0, Box::new(OutputPattern::Sequence(0, subpatterns)))
+            })?;
+            patterns.push(new_pattern);
         } else {
             eprintln!("invalid line: {line}");
             return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
@@ -343,7 +342,7 @@ fn parse_maybe_block<'s, 't>(
     if block {
         return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
     }
-    Ok((patterns, ignore, pattern))
+    Ok((patterns, ignore, reject, pattern))
 }
 
 fn parse_pattern_line(

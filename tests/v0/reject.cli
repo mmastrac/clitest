@@ -1,0 +1,8 @@
+#!/usr/bin/env clitest --version=0
+
+reject {
+    ! Hello, world!
+}
+
+$ echo "Hello, world!"
+%EXPECT_FAILURE

@@ -1,0 +1,27 @@
+#!/usr/bin/env clitest --version=0
+
+$ echo "a\nb\nc"
+*
+
+$ echo "a\nb\nc"
+! a
+*
+
+$ echo "a\nb\nc"
+! a
+! b
+*
+
+$ echo "a\nb\nc"
+! a
+! b
+! c
+*
+
+$ echo "a\nb\nc"
+%EXPECT_FAILURE
+! a
+! b
+! c
+! d
+*
