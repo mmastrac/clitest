@@ -1,4 +1,4 @@
-#!/usr/bin/env clitest --version=0
+#!/usr/bin/env clitest --v0
 
 $ echo "[LOG] Hello, world!"
 ! [LOG] %{GREEDYDATA}

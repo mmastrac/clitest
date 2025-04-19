@@ -1,4 +1,4 @@
-#!/usr/bin/env clitest --version=0
+#!/usr/bin/env clitest --v0
 
 reject {
     ! Hello, world!
@@ -6,3 +6,4 @@ reject {
 
 $ echo "Hello, world!"
 %EXPECT_FAILURE
+*

@@ -34,7 +34,7 @@ struct Args {
 
     /// Version (used for shebang only)
     #[arg(long, hide = true)]
-    version: bool,
+    v0: bool,
 }
 
 struct ScriptToRun {

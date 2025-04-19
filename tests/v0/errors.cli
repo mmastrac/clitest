@@ -1,4 +1,4 @@
-#!/usr/bin/env clitest --version=0
+#!/usr/bin/env clitest --v0
 
 $ exit 1
 %EXIT 1

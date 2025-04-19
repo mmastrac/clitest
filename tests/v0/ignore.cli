@@ -1,0 +1,33 @@
+#!/usr/bin/env clitest --v0
+
+ignore {
+    ! IGNORED%{GREEDYDATA}
+}
+
+$ echo "IGNORED something\na"
+! a
+
+$ echo "a\nIGNORED something\nb"
+! a
+! b
+
+$ echo "a\nXIGNORED something\nb\nXIGNORED something else\nc"
+! a
+sequence {
+    ignore {
+        ! XIGNORED%{GREEDYDATA}
+    }
+    ! b
+    ! c
+}
+
+$ echo "LOG first\na\nLOG something\nb\nLOG something else\nc"
+%EXPECT_FAILURE
+! a
+sequence {
+    ignore {
+        ! LOG %{GREEDYDATA}
+    }
+    ! b
+    ! c
+}

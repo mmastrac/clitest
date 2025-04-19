@@ -15,6 +15,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
     let mut output_pattern_lines = Vec::new();
     let mut grok = Grok::with_default_patterns();
     let mut global_ignore = Arc::new(Vec::new());
+    let mut global_reject = Arc::new(Vec::new());
     let mut exit = CommandExit::Success;
     let mut expect_failure = false;
     let mut set_var = None;
@@ -82,6 +83,10 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                         pattern =
                             OutputPattern::Ignore(0, global_ignore.clone(), Box::new(pattern));
                     }
+                    if !global_reject.is_empty() {
+                        pattern =
+                            OutputPattern::Reject(0, global_reject.clone(), Box::new(pattern));
+                    }
                     commands.push(ScriptCommand {
                         command,
                         pattern,
@@ -90,13 +95,9 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                         set_var: std::mem::take(&mut set_var),
                     });
                 } else {
-                    let pattern = parse_output_pattern(&pattern, &mut grok)?;
-                    if let OutputPattern::Ignore(_, ignored, _) = pattern {
-                        eprintln!("ignored lines: {ignored:?}");
-                        global_ignore = ignored;
-                    } else {
-                        // ?
-                    }
+                    let (_, ignored, reject, _) = parse_maybe_block(false, &pattern, &mut grok)?;
+                    global_ignore = Arc::new(ignored);
+                    global_reject = Arc::new(reject);
                 }
 
                 // Reset for next command
@@ -134,6 +135,9 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
         let mut pattern = parse_output_pattern(&output_pattern_lines, &mut grok)?;
         if !global_ignore.is_empty() {
             pattern = OutputPattern::Ignore(0, global_ignore.clone(), Box::new(pattern));
+        }
+        if !global_reject.is_empty() {
+            pattern = OutputPattern::Reject(0, global_reject.clone(), Box::new(pattern));
         }
         commands.push(ScriptCommand {
             command,
@@ -195,21 +199,21 @@ pub fn parse_output_pattern(
 ) -> Result<OutputPattern, ScriptError> {
     let (mut patterns, ignore, reject, rest) = parse_maybe_block(false, pattern, grok)?;
     patterns.push(OutputPattern::End);
-    let pattern = if patterns.len() == 1 {
+    let mut pattern = if patterns.len() == 1 {
         patterns.into_iter().next().unwrap()
     } else {
         OutputPattern::Sequence(0, patterns)
     };
 
-    if ignore.is_empty() {
-        Ok(pattern)
-    } else {
-        Ok(OutputPattern::Ignore(
-            0,
-            Arc::new(ignore),
-            Box::new(pattern),
-        ))
+    if !reject.is_empty() {
+        pattern = OutputPattern::Reject(0, Arc::new(reject), Box::new(pattern));
     }
+
+    if !ignore.is_empty() {
+        pattern = OutputPattern::Ignore(0, Arc::new(ignore), Box::new(pattern));
+    }
+
+    Ok(pattern)
 }
 
 fn parse_next(
