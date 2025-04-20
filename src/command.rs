@@ -15,11 +15,12 @@ use crate::{cprintln, script::Lines};
 #[derive(Debug, Serialize)]
 pub struct CommandLine {
     pub command: String,
+    pub line: usize,
 }
 
 impl CommandLine {
-    pub fn new(command: String) -> Self {
-        Self { command }
+    pub fn new(command: String, line: usize) -> Self {
+        Self { command, line }
     }
 
     pub fn run(

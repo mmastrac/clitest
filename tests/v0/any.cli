@@ -30,3 +30,10 @@ $ echo "a\nb\nc"
 ! c
 ! d
 *
+
+$ echo "start\n1\n2\nend\nstart\n1\n2\nend"
+repeat {
+    ! start
+    *
+    ! end
+}

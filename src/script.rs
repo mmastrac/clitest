@@ -144,6 +144,25 @@ pub struct ScriptRunArgs {
     pub runner: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScriptLine {
+    pub line: usize,
+    pub text: String,
+}
+
+impl ScriptLine {
+    pub fn parse(text: impl AsRef<str>) -> Vec<Self> {
+        text.as_ref()
+            .lines()
+            .enumerate()
+            .map(|(line, text)| Self {
+                line: line + 1,
+                text: text.to_string(),
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, thiserror::Error, derive_more::Display)]
 #[display("{error} at line {line}")]
 pub struct ScriptError {
@@ -173,6 +192,8 @@ pub enum ScriptErrorType {
     InvalidPatternDefinition,
     #[error("invalid pattern")]
     InvalidPattern,
+    #[error("invalid trailing pattern after *")]
+    InvalidAnyPattern,
     #[error("invalid exit status")]
     InvalidExitStatus,
     #[error("invalid set variable")]
@@ -743,13 +764,8 @@ $ cmd &
         }
         "#;
         let mut grok = Grok::with_default_patterns();
-        let pattern = parse_output_pattern(
-            &pattern.lines().map(|l| l.to_string()).collect::<Vec<_>>(),
-            &[],
-            &[],
-            &mut grok,
-        )
-        .unwrap();
+        let pattern =
+            parse_output_pattern(0, &ScriptLine::parse(pattern), &[], &[], &mut grok).unwrap();
         eprintln!("{pattern:?}");
     }
 }
