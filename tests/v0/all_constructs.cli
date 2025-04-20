@@ -56,3 +56,11 @@ a
 b
 c
 !!!
+
+$ echo "hello\nworld"
+repeat {
+    choice {
+        ! hello
+        ! world
+    }
+}

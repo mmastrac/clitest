@@ -5,8 +5,8 @@ use grok::Grok;
 use crate::{
     command::CommandLine,
     script::{
-        CommandExit, GrokPattern, OutputPatternType, Script, ScriptCommand, ScriptError,
-        ScriptErrorType,
+        CommandExit, GrokPattern, OutputPattern, OutputPatternType, Script, ScriptCommand,
+        ScriptError, ScriptErrorType,
     },
 };
 
@@ -17,8 +17,8 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
     let mut current_command = None;
     let mut output_pattern_lines = Vec::new();
     let mut grok = Grok::with_default_patterns();
-    let mut global_ignore = Arc::new(Vec::new());
-    let mut global_reject = Arc::new(Vec::new());
+    let mut global_ignore = Vec::new();
+    let mut global_reject = Vec::new();
     let mut exit = CommandExit::Success;
     let mut expect_failure = false;
     let mut set_var = None;
@@ -81,15 +81,8 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
 
                 let pattern = std::mem::take(&mut output_pattern_lines);
                 if let Some(command) = current_command.take() {
-                    let mut pattern = parse_output_pattern(&pattern, &mut grok)?;
-                    if !global_ignore.is_empty() {
-                        pattern =
-                            OutputPatternType::Ignore(0, global_ignore.clone(), Box::new(pattern));
-                    }
-                    if !global_reject.is_empty() {
-                        pattern =
-                            OutputPatternType::Reject(0, global_reject.clone(), Box::new(pattern));
-                    }
+                    let mut pattern =
+                        parse_output_pattern(&pattern, &global_ignore, &global_reject, &mut grok)?;
                     commands.push(ScriptCommand {
                         command,
                         pattern,
@@ -98,9 +91,9 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                         set_var: std::mem::take(&mut set_var),
                     });
                 } else {
-                    let (_, ignored, reject, _) = parse_maybe_block(false, &pattern, &mut grok)?;
-                    global_ignore = Arc::new(ignored);
-                    global_reject = Arc::new(reject);
+                    let (pattern, _) = parse_maybe_block(false, &pattern, &mut grok)?;
+                    global_ignore = pattern.ignore;
+                    global_reject = pattern.reject;
                 }
 
                 // Reset for next command
@@ -135,13 +128,12 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
 
     // Handle the last command if there are remaining lines
     if let Some(command) = current_command.take() {
-        let mut pattern = parse_output_pattern(&output_pattern_lines, &mut grok)?;
-        if !global_ignore.is_empty() {
-            pattern = OutputPatternType::Ignore(0, global_ignore.clone(), Box::new(pattern));
-        }
-        if !global_reject.is_empty() {
-            pattern = OutputPatternType::Reject(0, global_reject.clone(), Box::new(pattern));
-        }
+        let mut pattern = parse_output_pattern(
+            &output_pattern_lines,
+            &global_ignore,
+            &global_reject,
+            &mut grok,
+        )?;
         commands.push(ScriptCommand {
             command,
             pattern,
@@ -196,65 +188,70 @@ pub fn parse_command_line(command: &str) -> Result<CommandLine, ScriptErrorType>
     })
 }
 
+#[derive(Default)]
+struct OutputPatternBuilder {
+    ignore: Vec<OutputPattern>,
+    reject: Vec<OutputPattern>,
+    patterns: Vec<OutputPattern>,
+}
+
+impl OutputPatternBuilder {
+    fn push(&mut self, pattern: OutputPatternType) {
+        self.patterns.push(OutputPattern {
+            pattern,
+            ignore: Default::default(),
+            reject: Default::default(),
+            line: 0,
+        });
+    }
+}
+
+/// Parse the outer part of a pattern.
 pub fn parse_output_pattern(
     pattern: &[String],
+    ignore: &[OutputPattern],
+    reject: &[OutputPattern],
     grok: &mut Grok,
-) -> Result<OutputPatternType, ScriptError> {
-    let (mut patterns, ignore, reject, rest) = parse_maybe_block(false, pattern, grok)?;
-    patterns.push(OutputPatternType::End);
-    let mut pattern = if patterns.len() == 1 {
-        patterns.into_iter().next().unwrap()
-    } else {
-        OutputPatternType::Sequence(0, patterns)
-    };
+) -> Result<OutputPattern, ScriptError> {
+    let (mut builder, rest) = parse_maybe_block(false, pattern, grok)?;
+    builder.push(OutputPatternType::End);
 
-    if !reject.is_empty() {
-        pattern = OutputPatternType::Reject(0, Arc::new(reject), Box::new(pattern));
-    }
+    builder.ignore.extend(ignore.iter().cloned());
+    builder.reject.extend(reject.iter().cloned());
 
-    if !ignore.is_empty() {
-        pattern = OutputPatternType::Ignore(0, Arc::new(ignore), Box::new(pattern));
-    }
-
-    Ok(pattern)
+    Ok(OutputPattern {
+        ignore: Arc::new(builder.ignore),
+        reject: Arc::new(builder.reject),
+        pattern: OutputPatternType::Sequence(builder.patterns),
+        line: 0,
+    })
 }
 
 fn parse_next(
     block: bool,
     pattern: &mut &[String],
     grok: &mut Grok,
-    make_pattern: impl Fn(Vec<OutputPatternType>) -> OutputPatternType,
-) -> Result<OutputPatternType, ScriptError> {
-    let (subpatterns, ignore, reject, rest) = parse_maybe_block(block, pattern, grok)?;
-    let new_pattern = make_pattern(subpatterns);
+    make_pattern: impl Fn(Vec<OutputPattern>) -> OutputPatternType,
+) -> Result<OutputPattern, ScriptError> {
+    let (builder, rest) = parse_maybe_block(block, pattern, grok)?;
+    let new_pattern = make_pattern(builder.patterns);
     *pattern = rest;
-    if ignore.is_empty() {
-        Ok(new_pattern)
-    } else {
-        Ok(OutputPatternType::Ignore(
-            0,
-            Arc::new(ignore),
-            Box::new(new_pattern),
-        ))
-    }
+    Ok(OutputPattern {
+        line: 0,
+        ignore: Arc::new(builder.ignore),
+        reject: Arc::new(builder.reject),
+        pattern: new_pattern,
+    })
 }
 
+/// Parse the inner part of a block, collecting ignore/reject blocks and other
+/// patterns.
 fn parse_maybe_block<'s, 't>(
     block: bool,
     mut pattern: &'s [String],
     grok: &mut Grok,
-) -> Result<
-    (
-        Vec<OutputPatternType>,
-        Vec<OutputPatternType>,
-        Vec<OutputPatternType>,
-        &'s [String],
-    ),
-    ScriptError,
-> {
-    let mut patterns = vec![];
-    let mut ignore = vec![];
-    let mut reject = vec![];
+) -> Result<(OutputPatternBuilder, &'s [String]), ScriptError> {
+    let mut builder = OutputPatternBuilder::default();
     while let Some((line, rest)) = pattern.split_first() {
         let line = line.trim();
         pattern = rest;
@@ -262,24 +259,25 @@ fn parse_maybe_block<'s, 't>(
             continue;
         } else if line == "*" {
             // Recursively parse the rest of the pattern, stealing the first item for the Any pattern
-            let (mut subpatterns, next_ignore, next_reject, rest) =
-                parse_maybe_block(block, pattern, grok)?;
-            ignore.extend(next_ignore);
-            reject.extend(next_reject);
-            if subpatterns.is_empty() {
-                patterns.push(OutputPatternType::Any(0, None));
+            let (mut next, rest) = parse_maybe_block(block, pattern, grok)?;
+            builder.ignore.extend(next.ignore);
+            builder.reject.extend(next.reject);
+            if next.patterns.is_empty() {
+                builder.push(OutputPatternType::Any(None));
             } else {
-                patterns.push(OutputPatternType::Any(0, Some(Box::new(subpatterns.remove(0)))));
-                patterns.extend(subpatterns);
+                builder.push(OutputPatternType::Any(Some(Box::new(
+                    next.patterns.remove(0),
+                ))));
+                builder.patterns.extend(next.patterns);
             }
-            return Ok((patterns, ignore, reject, rest));
+            return Ok((builder, rest));
         } else if line.starts_with("!!!") {
             while let Some((line, rest)) = pattern.split_first() {
                 pattern = rest;
                 if line.starts_with("!!!") {
                     break;
                 } else {
-                    patterns.push(parse_pattern_line(grok, line, '!')?);
+                    builder.push(parse_pattern_line(grok, line, '!')?);
                 }
             }
         } else if line.starts_with("???") {
@@ -288,59 +286,67 @@ fn parse_maybe_block<'s, 't>(
                 if line.starts_with("???") {
                     break;
                 } else {
-                    patterns.push(parse_pattern_line(grok, line, '?')?);
+                    builder.push(parse_pattern_line(grok, line, '?')?);
                 }
             }
         } else if line == "!" {
-            patterns.push(OutputPatternType::Literal(0, "".to_string()));
+            builder.push(OutputPatternType::Literal("".to_string()));
         } else if line.starts_with("! ") {
-            patterns.push(parse_pattern_line(grok, &line[2..], '!')?);
+            builder.push(parse_pattern_line(grok, &line[2..], '!')?);
         } else if line.starts_with("? ") {
-            patterns.push(parse_pattern_line(grok, &line[2..], '?')?);
+            builder.push(parse_pattern_line(grok, &line[2..], '?')?);
         } else if line == "}" {
-            return Ok((patterns, ignore, reject, rest));
+            return Ok((builder, rest));
         } else if line.starts_with("repeat {") {
             let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Repeat(0, Box::new(OutputPatternType::Sequence(0, subpatterns)))
+                OutputPatternType::Repeat(Box::new(OutputPattern {
+                    pattern: OutputPatternType::Sequence(subpatterns),
+                    ignore: Default::default(),
+                    reject: Default::default(),
+                    line: 0,
+                }))
             })?;
-            patterns.push(new_pattern);
+            builder.patterns.push(new_pattern);
         } else if line.starts_with("choice {") {
             let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Choice(0, subpatterns)
+                OutputPatternType::Choice(subpatterns)
             })?;
-            patterns.push(new_pattern);
+            builder.patterns.push(new_pattern);
         } else if line.starts_with("unordered {") {
             let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Unordered(0, subpatterns)
+                OutputPatternType::Unordered(subpatterns)
             })?;
-            patterns.push(new_pattern);
+            builder.patterns.push(new_pattern);
         } else if line.starts_with("ignore {") {
-            let (subpatterns, nest_ignore, nest_reject, rest) =
-                parse_maybe_block(true, rest, grok)?;
-            if !nest_ignore.is_empty() {
+            let (next, rest) = parse_maybe_block(true, rest, grok)?;
+            if !next.ignore.is_empty() || !next.reject.is_empty() {
                 return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
             }
-            ignore.extend(subpatterns);
+            builder.ignore.extend(next.patterns);
             pattern = rest;
         } else if line.starts_with("reject {") {
-            let (subpatterns, nest_ignore, nest_reject, rest) =
-                parse_maybe_block(true, rest, grok)?;
+            let (next, rest) = parse_maybe_block(true, rest, grok)?;
 
-            if !nest_ignore.is_empty() {
+            if !next.ignore.is_empty() || !next.reject.is_empty() {
                 return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
             }
-            reject.extend(subpatterns);
+            builder.reject.extend(next.patterns);
             pattern = rest;
         } else if line.starts_with("sequence {") {
             let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Sequence(0, subpatterns)
+                OutputPatternType::Sequence(subpatterns)
             })?;
-            patterns.push(new_pattern);
+            builder.patterns.push(new_pattern);
         } else if line.starts_with("optional {") {
             let new_pattern = parse_next(true, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Optional(0, Box::new(OutputPatternType::Sequence(0, subpatterns)))
+                OutputPatternType::Optional(Box::new(OutputPattern {
+                    pattern: OutputPatternType::Sequence(subpatterns),
+                    ignore: Default::default(),
+                    reject: Default::default(),
+                    line: 0,
+                }))
             })?;
-            patterns.push(new_pattern);
+            builder.patterns.push(new_pattern);
         } else {
             eprintln!("invalid line: {line}");
             return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
@@ -349,7 +355,7 @@ fn parse_maybe_block<'s, 't>(
     if block {
         return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
     }
-    Ok((patterns, ignore, reject, pattern))
+    Ok((builder, pattern))
 }
 
 fn parse_pattern_line(
@@ -359,16 +365,16 @@ fn parse_pattern_line(
 ) -> Result<OutputPatternType, ScriptError> {
     if line_start == '!' {
         if !line.contains("%") {
-            return Ok(OutputPatternType::Literal(0, line.to_string()));
+            return Ok(OutputPatternType::Literal(line.to_string()));
         }
 
         let pattern = GrokPattern::compile(grok, line, true)
             .map_err(|e| ScriptError::new(ScriptErrorType::InvalidPattern, 0))?;
-        Ok(OutputPatternType::Pattern(0, Arc::new(pattern)))
+        Ok(OutputPatternType::Pattern(Arc::new(pattern)))
     } else if line_start == '?' {
         let pattern = GrokPattern::compile(grok, line, false)
             .map_err(|e| ScriptError::new(ScriptErrorType::InvalidPattern, 0))?;
-        Ok(OutputPatternType::Pattern(0, Arc::new(pattern)))
+        Ok(OutputPatternType::Pattern(Arc::new(pattern)))
     } else {
         Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0))
     }
@@ -380,9 +386,11 @@ mod tests {
 
     use super::*;
 
-    fn parse_pattern(pattern: &str) -> Result<OutputPatternType, ScriptError> {
+    fn parse_pattern(pattern: &str) -> Result<OutputPattern, ScriptError> {
         parse_output_pattern(
             &pattern.lines().map(|l| l.to_string()).collect::<Vec<_>>(),
+            &[],
+            &[],
             &mut Grok::with_default_patterns(),
         )
     }
