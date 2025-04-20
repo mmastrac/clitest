@@ -201,12 +201,12 @@ struct OutputPatternBuilder {
 }
 
 impl OutputPatternBuilder {
-    fn push(&mut self, pattern: OutputPatternType) {
+    fn push(&mut self, line: usize, pattern: OutputPatternType) {
         self.patterns.push(OutputPattern {
             pattern,
             ignore: Default::default(),
             reject: Default::default(),
-            line: 0,
+            line,
         });
     }
 }
@@ -220,7 +220,7 @@ pub fn parse_output_pattern(
     grok: &mut Grok,
 ) -> Result<OutputPattern, ScriptError> {
     let (mut builder, rest) = parse_maybe_block(false, pattern, grok)?;
-    builder.push(OutputPatternType::End);
+    builder.push(line, OutputPatternType::End);
 
     builder.ignore.extend(ignore.iter().cloned());
     builder.reject.extend(reject.iter().cloned());
@@ -273,7 +273,7 @@ fn parse_maybe_block<'s, 't>(
                 if block {
                     return Err(ScriptError::new(ScriptErrorType::InvalidAnyPattern, 0));
                 }
-                builder.push(OutputPatternType::Any(None));
+                builder.push(line.line, OutputPatternType::Any(None));
             } else {
                 let pattern = next.patterns.remove(0);
                 match pattern.pattern {
@@ -281,7 +281,7 @@ fn parse_maybe_block<'s, 't>(
                     | OutputPatternType::Unordered(..)
                     | OutputPatternType::Literal(..)
                     | OutputPatternType::Pattern(..) => {
-                        builder.push(OutputPatternType::Any(Some(Box::new(pattern))));
+                        builder.push(line.line, OutputPatternType::Any(Some(Box::new(pattern))));
                     }
                     _ => return Err(ScriptError::new(ScriptErrorType::InvalidAnyPattern, 0)),
                 }

@@ -69,7 +69,7 @@ impl Lines {
                             rejected_pattern.matches(context.ignore(), ignore_check.clone())
                         {
                             return Err(OutputPatternMatchFailure {
-                                script_line: 0,
+                                script_line: rejected_pattern.line,
                                 pattern_type: "reject",
                                 output_line: None,
                             });
@@ -578,7 +578,7 @@ impl OutputPatternType {
                 let (line, next) = output.next(context)?;
                 if let Some(line) = line {
                     Err(OutputPatternMatchFailure {
-                        script_line: 0,
+                        script_line,
                         pattern_type: "end",
                         output_line: Some(line),
                     })
