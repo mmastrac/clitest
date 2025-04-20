@@ -42,6 +42,7 @@ fn main() {
                 ignore_exit_codes: false,
                 ignore_matches: false,
                 quiet: true,
+                runner: None,
             }) {
                 cprintln!(fg = Color::Red, "❌ FAIL");
                 failed += 1;

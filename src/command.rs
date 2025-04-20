@@ -6,6 +6,7 @@ use std::{
     thread,
 };
 
+use shellish_parse::ParseOptions;
 use termcolor::Color;
 
 use crate::{cprintln, script::Lines};
@@ -23,15 +24,30 @@ impl CommandLine {
     pub fn run(
         &self,
         quiet: bool,
+        runner: Option<String>,
         envs: &HashMap<String, String>,
     ) -> Result<(Lines, ExitStatus), std::io::Error> {
-        let mut command = Command::new("sh");
-        command.arg("-c");
+        let mut command = if let Some(runner) = runner {
+            let bits = shellish_parse::parse(&runner, ParseOptions::default())
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+            let mut cmd = Command::new(&bits[0]);
+            cmd.args(&bits[1..]);
+            cmd
+        } else {
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c");
+            cmd
+        };
         command.arg(&self.command);
         command.envs(envs);
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
-        let mut output = command.spawn()?;
+        let mut output = command.spawn().map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("failed to spawn command {command:?}: {e}"),
+            )
+        })?;
         let output_lines = Arc::new(Mutex::new(Vec::new()));
 
         // Spawn a thread for stdout and stderr and collect each line we read into a buffer

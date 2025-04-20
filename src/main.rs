@@ -20,17 +20,21 @@ struct Args {
     #[arg(long)]
     delay_steps: Option<u64>,
 
-    /// Ignore exit codes
+    /// Ignore mismatchedexit codes
     #[arg(long)]
     ignore_exit_codes: bool,
 
-    /// Ignore matches
+    /// Ignore failed matches
     #[arg(long)]
     ignore_matches: bool,
 
     /// Quiet
     #[arg(long)]
     quiet: bool,
+
+    /// The command to run the script with. Default is 'sh -c'.
+    #[arg(long)]
+    runner: Option<String>,
 
     /// Version (used for shebang only)
     #[arg(long, hide = true)]
@@ -77,23 +81,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ignore_exit_codes: args.ignore_exit_codes,
             ignore_matches: args.ignore_matches,
             quiet: args.quiet,
+            runner: args.runner.clone(),
         };
 
         if args.quiet {
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path.display());
-            script.script.run(args)?;
-            cprintln!(fg = Color::Green, "OK");
+            match script.script.run(args) {
+                Ok(_) => cprintln!(fg = Color::Green, "OK"),
+                Err(e) => {
+                    cprintln!(fg = Color::Red, "FAILED");
+                    failed += 1;
+                    cprintln!("Error:{e}");
+                }
+            }
         } else {
             cprintln!(fg = Color::Cyan, "{}", script.original_path.display());
             println!();
-            if script.script.run(args).is_ok() {
-                cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
-                cprintln!(fg = Color::Green, "PASSED");
-            } else {
-                println!();
-                cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
-                cprintln!(fg = Color::Red, "FAILED");
-                failed += 1;
+            match script.script.run(args) {
+                Ok(_) => {
+                    cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
+                    cprintln!(fg = Color::Green, "PASSED");
+                }
+                Err(e) => {
+                    println!();
+                    cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
+                    cprintln!(fg = Color::Red, "FAILED");
+                    failed += 1;
+                    cprint!(fg = Color::Red, "Error: ");
+                    cprintln!("{}", e);
+                    println!();
+                }
             }
         }
     }

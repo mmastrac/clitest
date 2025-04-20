@@ -139,6 +139,7 @@ pub struct ScriptRunArgs {
     pub ignore_exit_codes: bool,
     pub ignore_matches: bool,
     pub quiet: bool,
+    pub runner: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error, derive_more::Display)]
@@ -512,7 +513,9 @@ impl Script {
                     count = termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(80)
                 );
             }
-            let (output, status) = command.command.run(args.quiet, &envs)?;
+            let (output, status) = command
+                .command
+                .run(args.quiet, args.runner.clone(), &envs)?;
             if !command.exit.matches(status) {
                 println!("❌ FAIL: {status}");
                 if !args.ignore_exit_codes {
