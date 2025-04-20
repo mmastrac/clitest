@@ -48,7 +48,12 @@
                     "name": "keyword.operator.literal.functional-tests"
                 },
                 "3": {
-                    "name": "string.unquoted.literal.functional-tests"
+                    "patterns": [
+                        {
+                            "name": "variable.other.grok.functional-tests",
+                            "match": "%\\{[A-Za-z0-9_]+\\}"
+                        }
+                    ]
                 }
             }
         },
@@ -90,7 +95,13 @@
         {
             "name": "string.quoted.triple.functional-tests",
             "begin": "^\\s*!!!\\s*$",
-            "end": "^\\s*!!!\\s*$"
+            "end": "^\\s*!!!\\s*$",
+            "patterns": [
+                {
+                    "name": "variable.other.grok.functional-tests",
+                    "match": "%\\{[A-Za-z0-9_]+\\}"
+                }
+            ]
         },
         {
             "name": "string.quoted.triple.functional-tests",
