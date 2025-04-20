@@ -1,5 +1,5 @@
 use clap::Parser;
-use parser::v0::parse_script;
+use parser::parse_script;
 use script::{Script, ScriptRunArgs};
 use std::path::PathBuf;
 use termcolor::Color;
