@@ -6,12 +6,13 @@ use std::{
     thread,
 };
 
+use serde::Serialize;
 use shellish_parse::ParseOptions;
 use termcolor::Color;
 
 use crate::{cprintln, script::Lines};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CommandLine {
     pub command: String,
 }

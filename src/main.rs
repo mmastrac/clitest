@@ -20,7 +20,7 @@ struct Args {
     #[arg(long)]
     delay_steps: Option<u64>,
 
-    /// Ignore mismatchedexit codes
+    /// Ignore mismatched exit codes
     #[arg(long)]
     ignore_exit_codes: bool,
 
@@ -35,6 +35,10 @@ struct Args {
     /// The command to run the script with. Default is 'sh -c'.
     #[arg(long)]
     runner: Option<String>,
+
+    /// Dump the script to JSON.
+    #[arg(long)]
+    dump: bool,
 
     /// Version (used for shebang only)
     #[arg(long, hide = true)]
@@ -69,6 +73,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
         })
         .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+
+    if args.dump {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(
+                &script_files
+                    .into_iter()
+                    .map(|s| s.script)
+                    .collect::<Vec<_>>()
+            )
+            .expect("Failed to serialize script files")
+        );
+        return Ok(());
+    }
 
     let mut failed = 0;
     let total = script_files.len();

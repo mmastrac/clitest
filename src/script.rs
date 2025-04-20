@@ -5,6 +5,7 @@ use std::{
 };
 
 use grok::Grok;
+use serde::Serialize;
 
 use crate::command::CommandLine;
 
@@ -18,9 +19,9 @@ pub struct Line {
 pub struct Lines {
     lines: Arc<Vec<String>>,
     current_line: usize,
-    ignored_patterns: Vec<Arc<Vec<OutputPattern>>>,
+    ignored_patterns: Vec<Arc<Vec<OutputPatternType>>>,
     negative_disabled: bool,
-    rejected_patterns: Vec<Arc<Vec<OutputPattern>>>,
+    rejected_patterns: Vec<Arc<Vec<OutputPatternType>>>,
 }
 
 impl std::fmt::Display for Lines {
@@ -86,7 +87,7 @@ impl Lines {
         Ok((None, next))
     }
 
-    pub fn with_ignore(&self, ignore: &Arc<Vec<OutputPattern>>) -> Self {
+    pub fn with_ignore(&self, ignore: &Arc<Vec<OutputPatternType>>) -> Self {
         let mut ignored_patterns = self.ignored_patterns.clone();
         ignored_patterns.push(ignore.clone());
         Self {
@@ -95,7 +96,7 @@ impl Lines {
         }
     }
 
-    pub fn with_reject(&self, reject: &Arc<Vec<OutputPattern>>) -> Self {
+    pub fn with_reject(&self, reject: &Arc<Vec<OutputPatternType>>) -> Self {
         let mut rejected_patterns = self.rejected_patterns.clone();
         rejected_patterns.push(reject.clone());
         Self {
@@ -127,10 +128,11 @@ impl Lines {
     }
 }
 
-#[derive(derive_more::Debug)]
+#[derive(derive_more::Debug, Serialize)]
 pub struct Script {
     pub commands: Vec<ScriptCommand>,
     #[debug(skip)]
+    #[serde(skip)]
     pub grok: Grok,
 }
 
@@ -179,56 +181,123 @@ pub enum ScriptErrorType {
     InvalidVersion,
 }
 
-#[derive(Clone)]
-pub enum OutputPattern {
+pub struct OutputPattern {
+    line: usize,
+    pattern: OutputPatternType,
+    ignore: Arc<Vec<GrokPattern>>,
+    reject: Arc<Vec<GrokPattern>>,
+}
+
+#[derive(Clone, Serialize)]
+pub enum OutputPatternType {
     /// The end of the output
     End,
     /// Any lines, followed by a pattern.
-    Any(usize, Option<Box<OutputPattern>>),
+    Any(usize, Option<Box<OutputPatternType>>),
     /// A literal string
     Literal(usize, String),
     /// A grok pattern
-    Pattern(usize, String, Arc<grok::Pattern>),
+    Pattern(usize, Arc<GrokPattern>),
     /// A pattern that matches one or more of the given pattern
-    Repeat(usize, Box<OutputPattern>),
+    Repeat(usize, Box<OutputPatternType>),
     /// A pattern that matches zero or one of the given pattern
-    Optional(usize, Box<OutputPattern>),
+    Optional(usize, Box<OutputPatternType>),
     /// A pattern that all of its subpatterns, but in any order
-    Unordered(usize, Vec<OutputPattern>),
+    Unordered(usize, Vec<OutputPatternType>),
     /// A pattern that matches one of the given patterns
-    Choice(usize, Vec<OutputPattern>),
+    Choice(usize, Vec<OutputPatternType>),
     /// A pattern that matches a sequence of patterns
-    Sequence(usize, Vec<OutputPattern>),
+    Sequence(usize, Vec<OutputPatternType>),
     /// Ignore any lines matching the given patterns when parsing the other pattern.
-    Ignore(usize, Arc<Vec<OutputPattern>>, Box<OutputPattern>),
+    Ignore(usize, Arc<Vec<OutputPatternType>>, Box<OutputPatternType>),
     /// Reject any lines matching the given patterns when parsing the other pattern.
-    Reject(usize, Arc<Vec<OutputPattern>>, Box<OutputPattern>),
+    Reject(usize, Arc<Vec<OutputPatternType>>, Box<OutputPatternType>),
 }
 
-impl Default for OutputPattern {
+impl Default for OutputPatternType {
     fn default() -> Self {
         Self::Sequence(0, vec![])
     }
 }
 
-impl std::fmt::Debug for OutputPattern {
+impl std::fmt::Debug for OutputPatternType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OutputPattern::Literal(_, literal) => write!(f, "Literal({literal})"),
-            OutputPattern::Pattern(_, pattern, _) => write!(f, "Pattern({pattern:?})"),
-            OutputPattern::Repeat(_, pattern) => write!(f, "Repeat({pattern:?})"),
-            OutputPattern::Optional(_, pattern) => write!(f, "Optional({pattern:?})"),
-            OutputPattern::Unordered(_, patterns) => write!(f, "Unordered({patterns:?})"),
-            OutputPattern::Choice(_, patterns) => write!(f, "Choice({patterns:?})"),
-            OutputPattern::Sequence(_, patterns) => write!(f, "Sequence({patterns:?})"),
-            OutputPattern::Ignore(_, patterns, pattern) => {
+            OutputPatternType::Literal(_, literal) => write!(f, "Literal({literal})"),
+            OutputPatternType::Pattern(_, pattern) => write!(f, "Pattern({pattern:?})"),
+            OutputPatternType::Repeat(_, pattern) => write!(f, "Repeat({pattern:?})"),
+            OutputPatternType::Optional(_, pattern) => write!(f, "Optional({pattern:?})"),
+            OutputPatternType::Unordered(_, patterns) => write!(f, "Unordered({patterns:?})"),
+            OutputPatternType::Choice(_, patterns) => write!(f, "Choice({patterns:?})"),
+            OutputPatternType::Sequence(_, patterns) => write!(f, "Sequence({patterns:?})"),
+            OutputPatternType::Ignore(_, patterns, pattern) => {
                 write!(f, "Ignore({patterns:?}, {pattern:?})")
             }
-            OutputPattern::Reject(_, patterns, pattern) => {
+            OutputPatternType::Reject(_, patterns, pattern) => {
                 write!(f, "Reject({patterns:?}, {pattern:?})")
             }
-            OutputPattern::Any(_, until) => write!(f, "Any({until:?})"),
-            OutputPattern::End => write!(f, "End"),
+            OutputPatternType::Any(_, until) => write!(f, "Any({until:?})"),
+            OutputPatternType::End => write!(f, "End"),
+        }
+    }
+}
+
+#[derive(Serialize, derive_more::Debug)]
+pub struct GrokPattern {
+    pattern: String,
+    #[serde(skip)]
+    #[debug(skip)]
+    grok: grok::Pattern,
+}
+
+impl GrokPattern {
+    pub fn compile(
+        grok: &mut Grok,
+        line: &str,
+        escape_non_grok: bool,
+    ) -> Result<Self, grok::Error> {
+        if escape_non_grok {
+            // Borrowed from grok crate
+            const GROK_PATTERN: &str = r"%\{(?<name>(?<pattern>[A-z0-9]+)(?::(?<alias>[A-z0-9_:;\/\s\.]+))?)(?:=(?<definition>(?:(?:[^{}]+|\.+)+)+))?\}";
+            let re = onig::Regex::new(GROK_PATTERN).expect("Failed to compile Grok metapattern");
+            let mut prev_start = 0;
+
+            // Escape the text between grok pattern matches to make it easier to write
+            // literals-with-grok patterns.
+            let mut escaped_string = String::with_capacity(line.len() * 2);
+            for re_match in re.find_iter(line) {
+                let text = &line[prev_start..re_match.0];
+                text.chars().for_each(|c| {
+                    if c.is_ascii() && !c.is_alphanumeric() {
+                        escaped_string.push('\\');
+                        escaped_string.push(c);
+                    } else {
+                        escaped_string.push(c);
+                    }
+                });
+                escaped_string.push_str(&line[re_match.0..re_match.1]);
+                prev_start = re_match.1;
+            }
+            let text = &line[prev_start..];
+            text.chars().for_each(|c| {
+                if c.is_ascii() && !c.is_alphanumeric() {
+                    escaped_string.push('\\');
+                    escaped_string.push(c);
+                } else {
+                    escaped_string.push(c);
+                }
+            });
+            let eol = format!("{escaped_string}$");
+            Ok(Self {
+                pattern: escaped_string,
+                grok: grok.compile(&eol, false)?,
+            })
+        } else {
+            let eol = format!("{line}$");
+            Ok(Self {
+                pattern: line.to_string(),
+                grok: grok.compile(&eol, false)?,
+            })
         }
     }
 }
@@ -300,7 +369,7 @@ impl OutputMatchContext {
     }
 }
 
-impl OutputPattern {
+impl OutputPatternType {
     pub fn matches<'s>(
         &self,
         context: OutputMatchContext,
@@ -308,7 +377,7 @@ impl OutputPattern {
     ) -> Result<Lines, OutputPatternMatchFailure> {
         context.trace(&format!("matching {:?}", self));
         match self {
-            OutputPattern::Literal(script_line, literal) => {
+            OutputPatternType::Literal(script_line, literal) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
                     if &line.text == literal {
@@ -333,12 +402,12 @@ impl OutputPattern {
                     })
                 }
             }
-            OutputPattern::Pattern(script_line, pattern_string, pattern) => {
+            OutputPatternType::Pattern(script_line, pattern) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
                     let text = line.text.clone();
                     // Don't print panic backtraces
-                    let res = match std::panic::catch_unwind(|| pattern.match_against(&text)) {
+                    let res = match std::panic::catch_unwind(|| pattern.grok.match_against(&text)) {
                         Ok(res) => res,
                         Err(_) => {
                             return Err(OutputPatternMatchFailure {
@@ -349,14 +418,11 @@ impl OutputPattern {
                         }
                     };
                     if let Some(matches) = res {
-                        context.trace(&format!(
-                            "pattern match: {:?} =~ {pattern_string:?}",
-                            line.text
-                        ));
+                        context.trace(&format!("pattern match: {:?} =~ {pattern:?}", line.text));
                         Ok(next)
                     } else {
                         context.trace(&format!(
-                            "pattern FAILED match: {:?} =~ {pattern_string:?}",
+                            "pattern FAILED match: {:?} =~ {pattern:?}",
                             line.text
                         ));
                         Err(OutputPatternMatchFailure {
@@ -373,7 +439,7 @@ impl OutputPattern {
                     })
                 }
             }
-            OutputPattern::Sequence(script_line, patterns) => {
+            OutputPatternType::Sequence(script_line, patterns) => {
                 for pattern in patterns {
                     match pattern.matches(context.descend(), output) {
                         Ok(v) => {
@@ -386,7 +452,7 @@ impl OutputPattern {
                 }
                 Ok(output)
             }
-            OutputPattern::Repeat(script_line, pattern) => {
+            OutputPatternType::Repeat(script_line, pattern) => {
                 // Mandatory first match
                 let mut output = pattern.matches(context.descend(), output)?;
                 // Any number of additional matches, greedy
@@ -399,14 +465,14 @@ impl OutputPattern {
                     }
                 }
             }
-            OutputPattern::Optional(script_line, pattern) => {
+            OutputPatternType::Optional(script_line, pattern) => {
                 // Never fails
                 match pattern.matches(context.descend(), output.clone()) {
                     Ok(v) => Ok(v),
                     Err(_) => Ok(output),
                 }
             }
-            OutputPattern::Unordered(script_line, patterns) => {
+            OutputPatternType::Unordered(script_line, patterns) => {
                 // Found is initialized with 0..patterns.len()
                 let mut not_found = (0..patterns.len()).collect::<HashSet<_>>();
                 'outer: while !not_found.is_empty() {
@@ -431,7 +497,7 @@ impl OutputPattern {
                 }
                 Ok(output)
             }
-            OutputPattern::Choice(script_line, patterns) => {
+            OutputPatternType::Choice(script_line, patterns) => {
                 for pattern in patterns {
                     if let Ok(v) = pattern.matches(context.descend(), output.clone()) {
                         return Ok(v);
@@ -443,13 +509,13 @@ impl OutputPattern {
                     output_line: None,
                 })
             }
-            OutputPattern::Ignore(script_line, ignore, pattern) => {
+            OutputPatternType::Ignore(script_line, ignore, pattern) => {
                 pattern.matches(context.descend(), output.with_ignore(ignore))
             }
-            OutputPattern::Reject(script_line, reject, pattern) => {
+            OutputPatternType::Reject(script_line, reject, pattern) => {
                 pattern.matches(context.descend(), output.with_reject(reject))
             }
-            OutputPattern::Any(script_line, until) => {
+            OutputPatternType::Any(script_line, until) => {
                 if let Some(until) = until {
                     loop {
                         match until.matches(context.descend(), output.clone()) {
@@ -480,7 +546,7 @@ impl OutputPattern {
                     }
                 }
             }
-            OutputPattern::End => {
+            OutputPatternType::End => {
                 let (line, next) = output.next(context)?;
                 if let Some(line) = line {
                     Err(OutputPatternMatchFailure {
@@ -584,7 +650,7 @@ impl Script {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub enum CommandExit {
     #[default]
     Success,
@@ -601,10 +667,10 @@ impl CommandExit {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct ScriptCommand {
     pub command: CommandLine,
-    pub pattern: OutputPattern,
+    pub pattern: OutputPatternType,
     pub exit: CommandExit,
     pub expect_failure: bool,
     pub set_var: Option<String>,
@@ -661,11 +727,11 @@ $ cmd &
     #[test]
     fn test_literal_match() {
         let output = "hello\nworld";
-        let pattern = OutputPattern::Sequence(
+        let pattern = OutputPatternType::Sequence(
             0,
             vec![
-                OutputPattern::Literal(0, "hello".to_string()),
-                OutputPattern::Literal(0, "world".to_string()),
+                OutputPatternType::Literal(0, "hello".to_string()),
+                OutputPatternType::Literal(0, "world".to_string()),
             ],
         );
         let lines = Lines::new(output.lines().map(|l| l.to_string()).collect::<Vec<_>>());
@@ -677,15 +743,15 @@ $ cmd &
     #[test]
     fn test_repeat_choice() {
         let output = "hello\nworld";
-        let pattern = OutputPattern::Sequence(
+        let pattern = OutputPatternType::Sequence(
             0,
-            vec![OutputPattern::Repeat(
+            vec![OutputPatternType::Repeat(
                 0,
-                Box::new(OutputPattern::Choice(
+                Box::new(OutputPatternType::Choice(
                     0,
                     vec![
-                        OutputPattern::Literal(0, "hello".to_string()),
-                        OutputPattern::Literal(0, "world".to_string()),
+                        OutputPatternType::Literal(0, "hello".to_string()),
+                        OutputPatternType::Literal(0, "world".to_string()),
                     ],
                 )),
             )],

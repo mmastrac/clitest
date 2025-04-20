@@ -36,6 +36,7 @@ The test files use the following syntax:
 - `sequence { ... }` - Match all enclosed patterns in sequence
 - `ignore { ... }` - Ignore any output that matches the enclosed patterns
 - `reject { ... }` - Fail if any output matches the enclosed patterns
+- `*` - Match any output, lazily (completes when the next structure matches)
 
 ## Examples
 
