@@ -11,7 +11,7 @@ fn main() {
 
     let mut total = 0;
     let mut failed = 0;
-    println!();
+    cprintln!();
     let pattern = std::env::args().nth(1).unwrap_or_default();
     let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for test_dir in std::fs::read_dir(crate_root.join("tests"))
@@ -43,6 +43,7 @@ fn main() {
                 ignore_matches: false,
                 quiet: true,
                 runner: None,
+                show_line_numbers: true,
             }) {
                 cprintln!(fg = Color::Red, "❌ FAIL");
                 failed += 1;
@@ -53,7 +54,7 @@ fn main() {
         }
     }
 
-    println!();
+    cprintln!();
     cprintln!(
         fg = if failed > 0 { Color::Red } else { Color::White },
         dimmed = true,
@@ -61,5 +62,5 @@ fn main() {
         total,
         failed
     );
-    println!();
+    cprintln!();
 }

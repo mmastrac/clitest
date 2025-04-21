@@ -12,25 +12,29 @@ mod term;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Path to the script to run
+    /// Path to the script to run.
     #[arg(value_hint = clap::ValueHint::FilePath)]
     scripts: Vec<PathBuf>,
 
-    /// Delay between steps
+    /// Delay between steps.
     #[arg(long)]
     delay_steps: Option<u64>,
 
-    /// Ignore mismatched exit codes
+    /// Ignore mismatched exit codes.
     #[arg(long)]
     ignore_exit_codes: bool,
 
-    /// Ignore failed matches
+    /// Ignore failed matches.
     #[arg(long)]
     ignore_matches: bool,
 
-    /// Quiet
+    /// Quiet.
     #[arg(long)]
     quiet: bool,
+
+    /// Show line numbers in command output.
+    #[arg(long)]
+    show_line_numbers: bool,
 
     /// The command to run the script with. Default is 'sh -c'.
     #[arg(long)]
@@ -100,6 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ignore_matches: args.ignore_matches,
             quiet: args.quiet,
             runner: args.runner.clone(),
+            show_line_numbers: args.show_line_numbers,
         };
 
         if args.quiet {
@@ -114,20 +119,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         } else {
             cprintln!(fg = Color::Cyan, "{}", script.original_path.display());
-            println!();
+            cprintln!();
             match script.script.run(args) {
                 Ok(_) => {
                     cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
                     cprintln!(fg = Color::Green, "PASSED");
                 }
                 Err(e) => {
-                    println!();
+                    cprintln!();
                     cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
                     cprintln!(fg = Color::Red, "FAILED");
                     failed += 1;
                     cprint!(fg = Color::Red, "Error: ");
                     cprintln!("{}", e);
-                    println!();
+                    cprintln!();
                 }
             }
         }

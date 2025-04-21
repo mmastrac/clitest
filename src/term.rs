@@ -34,6 +34,12 @@ macro_rules! println {
 
 #[macro_export]
 macro_rules! cprintln {
+    () => {
+        {
+            use std::io::Write;
+            _ = writeln!(&mut $crate::term::STDOUT.lock().unwrap());
+        }
+    };
     ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
         {
             use std::io::Write;

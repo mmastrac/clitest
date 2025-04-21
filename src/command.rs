@@ -10,7 +10,7 @@ use serde::Serialize;
 use shellish_parse::ParseOptions;
 use termcolor::Color;
 
-use crate::{cprintln, script::Lines};
+use crate::{cprint, cprintln, script::Lines};
 
 #[derive(Debug, Serialize)]
 pub struct CommandLine {
@@ -26,6 +26,7 @@ impl CommandLine {
     pub fn run(
         &self,
         quiet: bool,
+        show_line_numbers: bool,
         runner: Option<String>,
         envs: &HashMap<String, String>,
     ) -> Result<(Lines, ExitStatus), std::io::Error> {
@@ -51,10 +52,12 @@ impl CommandLine {
             )
         })?;
         let output_lines = Arc::new(Mutex::new(Vec::new()));
+        let line_number = Arc::new(Mutex::new(1));
 
         // Spawn a thread for stdout and stderr and collect each line we read into a buffer
         let stdout_lines = output_lines.clone();
         let stdout = output.stdout.take().unwrap();
+        let line_number_stdout = line_number.clone();
         let stdout = thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
@@ -65,10 +68,15 @@ impl CommandLine {
                 if line.ends_with('\n') {
                     line.pop();
                 }
+                let mut line_number = line_number_stdout.lock().unwrap();
                 if !quiet {
-                    println!("{line}");
+                    if show_line_numbers {
+                        cprint!(fg = Color::White, dimmed = true, "{line_number:>3} ");
+                    }
+                    cprintln!("{line}");
                 }
                 stdout_lines.lock().unwrap().push(std::mem::take(&mut line));
+                *line_number += 1;
             }
         });
 
@@ -84,10 +92,15 @@ impl CommandLine {
                 if line.ends_with('\n') {
                     line.pop();
                 }
+                let mut line_number = line_number.lock().unwrap();
                 if !quiet {
+                    if show_line_numbers {
+                        cprint!(fg = Color::White, dimmed = true, "{line_number:>3} ");
+                    }
                     cprintln!(fg = Color::Yellow, "{line}");
                 }
                 stderr_lines.lock().unwrap().push(std::mem::take(&mut line));
+                *line_number += 1;
             }
         });
 

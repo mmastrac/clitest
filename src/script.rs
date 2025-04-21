@@ -141,6 +141,7 @@ pub struct ScriptRunArgs {
     pub ignore_exit_codes: bool,
     pub ignore_matches: bool,
     pub quiet: bool,
+    pub show_line_numbers: bool,
     pub runner: Option<String>,
 }
 
@@ -607,9 +608,12 @@ impl Script {
                     count = termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(80)
                 );
             }
-            let (output, status) = command
-                .command
-                .run(args.quiet, args.runner.clone(), &envs)?;
+            let (output, status) = command.command.run(
+                args.quiet,
+                args.show_line_numbers,
+                args.runner.clone(),
+                &envs,
+            )?;
             if !command.exit.matches(status) {
                 println!("❌ FAIL: {status}");
                 if !args.ignore_exit_codes {
@@ -668,7 +672,7 @@ impl Script {
                 }
             }
             if !args.quiet {
-                println!();
+                cprintln!();
             }
             if let Some(delay) = args.delay_steps {
                 std::thread::sleep(std::time::Duration::from_millis(delay));
