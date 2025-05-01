@@ -431,6 +431,9 @@ fn parse_maybe_block<'s, 't>(
                 },
             )?;
             builder.patterns.push(new_pattern);
+        } else if text.starts_with("#") {
+            // This is a comment
+            continue;
         } else {
             eprintln!("invalid line: {text}");
             return Err(ScriptError::new(
