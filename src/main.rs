@@ -1,6 +1,6 @@
 use clap::Parser;
 use parser::parse_script;
-use script::{Script, ScriptRunArgs};
+use script::{Script, ScriptFile, ScriptRunArgs};
 use std::path::PathBuf;
 use termcolor::Color;
 
@@ -50,7 +50,7 @@ struct Args {
 }
 
 struct ScriptToRun {
-    original_path: PathBuf,
+    original_path: ScriptFile,
     script_dir: PathBuf,
     script: Script,
 }
@@ -69,9 +69,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .parent()
                 .ok_or("failed to get script directory")?
                 .to_path_buf();
-            let script = parse_script(&std::fs::read_to_string(path)?)?;
+            let script_file = ScriptFile::new(path.clone());
+            let script = parse_script(script_file.clone(), &std::fs::read_to_string(path)?)?;
             Ok(ScriptToRun {
-                original_path: path.clone(),
+                original_path: script_file.clone(),
                 script_dir,
                 script,
             })
@@ -108,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         if args.quiet {
-            cprint!(fg = Color::Cyan, "{} ... ", script.original_path.display());
+            cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
             match script.script.run(args) {
                 Ok(_) => cprintln!(fg = Color::Green, "OK"),
                 Err(e) => {
@@ -118,16 +119,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         } else {
-            cprintln!(fg = Color::Cyan, "{}", script.original_path.display());
+            cprint!("Running ");
+            cprint!(fg = Color::Cyan, "{}", script.original_path);
+            cprintln!(" ...");
             cprintln!();
             match script.script.run(args) {
                 Ok(_) => {
-                    cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
+                    cprint!(fg = Color::Cyan, "{} ", script.original_path);
                     cprintln!(fg = Color::Green, "PASSED");
                 }
                 Err(e) => {
                     cprintln!();
-                    cprint!(fg = Color::Cyan, "{} ", script.original_path.display());
+                    cprint!(fg = Color::Cyan, "{} ", script.original_path);
                     cprintln!(fg = Color::Red, "FAILED");
                     failed += 1;
                     cprint!(fg = Color::Red, "Error: ");

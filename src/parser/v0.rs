@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use grok::Grok;
 
@@ -6,13 +6,13 @@ use crate::{
     command::CommandLine,
     script::{
         CommandExit, GrokPattern, OutputPattern, OutputPatternType, Script, ScriptCommand,
-        ScriptError, ScriptErrorType, ScriptLine,
+        ScriptError, ScriptErrorType, ScriptFile, ScriptLine, ScriptLocation,
     },
 };
 
-pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
+pub fn parse_script(file_name: ScriptFile, script: &str) -> Result<Script, ScriptError> {
     // First split by lines, and then split by script commands ($)
-    let lines = ScriptLine::parse(script);
+    let lines = ScriptLine::parse(file_name.clone(), script);
     let mut commands = Vec::new();
     let mut current_command: Option<CommandLine> = None;
     let mut output_pattern_lines = Vec::new();
@@ -33,7 +33,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                     } else {
                         return Err(ScriptError::new(
                             ScriptErrorType::InvalidPatternDefinition,
-                            line.line,
+                            line.location.clone(),
                         ));
                     }
                 }
@@ -49,7 +49,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                 if let Some(pattern) = line.text.strip_prefix("#pattern ") {
                     return Err(ScriptError::new(
                         ScriptErrorType::InvalidPatternDefinition,
-                        line.line,
+                        line.location.clone(),
                     ));
                 }
                 // This is a comment
@@ -59,7 +59,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                 // feed it another line.
                 let mut command = line.text[2..].to_string();
                 let command = loop {
-                    match parse_command_line(line.line, &command) {
+                    match parse_command_line(line.location.clone(), &command) {
                         Ok(command) => break command,
                         Err(e @ ScriptErrorType::UnclosedQuote)
                         | Err(e @ ScriptErrorType::UnclosedBackslash) => match lines.next() {
@@ -68,11 +68,11 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                                 command.push_str(&line.text);
                             }
                             None => {
-                                return Err(ScriptError::new(e, line.line));
+                                return Err(ScriptError::new(e, line.location.clone()));
                             }
                         },
                         Err(e) => {
-                            return Err(ScriptError::new(e, line.line));
+                            return Err(ScriptError::new(e, line.location.clone()));
                         }
                     }
                 };
@@ -80,7 +80,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                 let pattern = std::mem::take(&mut output_pattern_lines);
                 if let Some(command) = current_command.take() {
                     let mut pattern = parse_output_pattern(
-                        command.line,
+                        command.location.clone(),
                         &pattern,
                         &global_ignore,
                         &global_reject,
@@ -94,7 +94,8 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                         set_var: std::mem::take(&mut set_var),
                     });
                 } else {
-                    let (pattern, _) = parse_maybe_block(false, &pattern, &mut grok)?;
+                    let (pattern, _) =
+                        parse_maybe_block(false, line.location.clone(), &pattern, &mut grok)?;
                     global_ignore = pattern.ignore;
                     global_reject = pattern.reject;
                 }
@@ -107,7 +108,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                 } else {
                     return Err(ScriptError::new(
                         ScriptErrorType::InvalidSetVariable,
-                        line.line,
+                        line.location.clone(),
                     ));
                 }
             } else if line.text.starts_with("%EXPECT_FAILURE") {
@@ -120,7 +121,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
                 } else {
                     return Err(ScriptError::new(
                         ScriptErrorType::InvalidExitStatus,
-                        line.line,
+                        line.location.clone(),
                     ));
                 }
             } else {
@@ -132,7 +133,7 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
     // Handle the last command if there are remaining lines
     if let Some(command) = current_command.take() {
         let mut pattern = parse_output_pattern(
-            command.line,
+            command.location.clone(),
             &output_pattern_lines,
             &global_ignore,
             &global_reject,
@@ -146,13 +147,19 @@ pub fn parse_script(script: &str) -> Result<Script, ScriptError> {
             set_var,
         });
     } else {
-        return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
+        return Err(ScriptError::new(
+            ScriptErrorType::MissingCommandLines,
+            ScriptLocation::new(file_name.clone(), 1),
+        ));
     }
 
     Ok(Script { commands, grok })
 }
 
-pub fn parse_command_line(line: usize, command: &str) -> Result<CommandLine, ScriptErrorType> {
+pub fn parse_command_line(
+    location: ScriptLocation,
+    command: &str,
+) -> Result<CommandLine, ScriptErrorType> {
     let command_str = command.to_string();
     // Process the accumulated command
     const SEPARATORS: &[&str] = &[
@@ -187,10 +194,7 @@ pub fn parse_command_line(line: usize, command: &str) -> Result<CommandLine, Scr
         }
     }
 
-    Ok(CommandLine {
-        command: command_str,
-        line,
-    })
+    Ok(CommandLine::new(command_str, location))
 }
 
 #[derive(Default)]
@@ -201,26 +205,26 @@ struct OutputPatternBuilder {
 }
 
 impl OutputPatternBuilder {
-    fn push(&mut self, line: usize, pattern: OutputPatternType) {
+    fn push(&mut self, location: ScriptLocation, pattern: OutputPatternType) {
         self.patterns.push(OutputPattern {
             pattern,
             ignore: Default::default(),
             reject: Default::default(),
-            line,
+            location,
         });
     }
 }
 
 /// Parse the outer part of a pattern.
 pub fn parse_output_pattern(
-    line: usize,
+    location: ScriptLocation,
     pattern: &[ScriptLine],
     ignore: &[OutputPattern],
     reject: &[OutputPattern],
     grok: &mut Grok,
 ) -> Result<OutputPattern, ScriptError> {
-    let (mut builder, rest) = parse_maybe_block(false, pattern, grok)?;
-    builder.push(line, OutputPatternType::End);
+    let (mut builder, rest) = parse_maybe_block(false, location.clone(), pattern, grok)?;
+    builder.push(location.clone(), OutputPatternType::End);
 
     builder.ignore.extend(ignore.iter().cloned());
     builder.reject.extend(reject.iter().cloned());
@@ -229,22 +233,22 @@ pub fn parse_output_pattern(
         ignore: Arc::new(builder.ignore),
         reject: Arc::new(builder.reject),
         pattern: OutputPatternType::Sequence(builder.patterns),
-        line,
+        location,
     })
 }
 
 fn parse_next(
     block: bool,
-    line: usize,
+    location: ScriptLocation,
     pattern: &mut &[ScriptLine],
     grok: &mut Grok,
     make_pattern: impl Fn(Vec<OutputPattern>) -> OutputPatternType,
 ) -> Result<OutputPattern, ScriptError> {
-    let (builder, rest) = parse_maybe_block(block, pattern, grok)?;
+    let (builder, rest) = parse_maybe_block(block, location.clone(), pattern, grok)?;
     let new_pattern = make_pattern(builder.patterns);
     *pattern = rest;
     Ok(OutputPattern {
-        line,
+        location,
         ignore: Arc::new(builder.ignore),
         reject: Arc::new(builder.reject),
         pattern: new_pattern,
@@ -255,6 +259,7 @@ fn parse_next(
 /// patterns.
 fn parse_maybe_block<'s, 't>(
     block: bool,
+    location: ScriptLocation,
     mut pattern: &'s [ScriptLine],
     grok: &mut Grok,
 ) -> Result<(OutputPatternBuilder, &'s [ScriptLine]), ScriptError> {
@@ -266,14 +271,17 @@ fn parse_maybe_block<'s, 't>(
             continue;
         } else if text == "*" {
             // Recursively parse the rest of the pattern, stealing the first item for the Any pattern
-            let (mut next, rest) = parse_maybe_block(block, pattern, grok)?;
+            let (mut next, rest) = parse_maybe_block(block, line.location.clone(), pattern, grok)?;
             builder.ignore.extend(next.ignore);
             builder.reject.extend(next.reject);
             if next.patterns.is_empty() {
                 if block {
-                    return Err(ScriptError::new(ScriptErrorType::InvalidAnyPattern, 0));
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidAnyPattern,
+                        line.location.clone(),
+                    ));
                 }
-                builder.push(line.line, OutputPatternType::Any(None));
+                builder.push(line.location.clone(), OutputPatternType::Any(None));
             } else {
                 let pattern = next.patterns.remove(0);
                 match pattern.pattern {
@@ -281,9 +289,17 @@ fn parse_maybe_block<'s, 't>(
                     | OutputPatternType::Unordered(..)
                     | OutputPatternType::Literal(..)
                     | OutputPatternType::Pattern(..) => {
-                        builder.push(line.line, OutputPatternType::Any(Some(Box::new(pattern))));
+                        builder.push(
+                            line.location.clone(),
+                            OutputPatternType::Any(Some(Box::new(pattern))),
+                        );
                     }
-                    _ => return Err(ScriptError::new(ScriptErrorType::InvalidAnyPattern, 0)),
+                    _ => {
+                        return Err(ScriptError::new(
+                            ScriptErrorType::InvalidAnyPattern,
+                            line.location.clone(),
+                        ));
+                    }
                 }
                 builder.patterns.extend(next.patterns);
             }
@@ -294,9 +310,12 @@ fn parse_maybe_block<'s, 't>(
                 if line.text.starts_with("!!!") {
                     break;
                 } else {
-                    builder
-                        .patterns
-                        .push(parse_pattern_line(grok, line.line, &line.text, '!')?);
+                    builder.patterns.push(parse_pattern_line(
+                        grok,
+                        line.location.clone(),
+                        &line.text,
+                        '!',
+                    )?);
                 }
             }
         } else if text.starts_with("???") {
@@ -305,88 +324,133 @@ fn parse_maybe_block<'s, 't>(
                 if line.text.starts_with("???") {
                     break;
                 } else {
-                    builder
-                        .patterns
-                        .push(parse_pattern_line(grok, line.line, &line.text, '?')?);
+                    builder.patterns.push(parse_pattern_line(
+                        grok,
+                        line.location.clone(),
+                        &line.text,
+                        '?',
+                    )?);
                 }
             }
         } else if text == "!" || text == "?" {
             builder
                 .patterns
-                .push(parse_pattern_line(grok, line.line, "", '!')?);
+                .push(parse_pattern_line(grok, line.location.clone(), "", '!')?);
         } else if text.starts_with("! ") {
-            builder
-                .patterns
-                .push(parse_pattern_line(grok, line.line, &text[2..], '!')?);
+            builder.patterns.push(parse_pattern_line(
+                grok,
+                line.location.clone(),
+                &text[2..],
+                '!',
+            )?);
         } else if text.starts_with("? ") {
-            builder
-                .patterns
-                .push(parse_pattern_line(grok, line.line, &text[2..], '?')?);
+            builder.patterns.push(parse_pattern_line(
+                grok,
+                line.location.clone(),
+                &text[2..],
+                '?',
+            )?);
         } else if text == "}" {
             return Ok((builder, rest));
         } else if text.starts_with("repeat {") {
-            let new_pattern = parse_next(true, line.line, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Repeat(Box::new(OutputPattern {
-                    pattern: OutputPatternType::Sequence(subpatterns),
-                    ignore: Default::default(),
-                    reject: Default::default(),
-                    line: line.line,
-                }))
-            })?;
+            let new_pattern = parse_next(
+                true,
+                line.location.clone(),
+                &mut pattern,
+                grok,
+                |subpatterns| {
+                    OutputPatternType::Repeat(Box::new(OutputPattern {
+                        pattern: OutputPatternType::Sequence(subpatterns),
+                        ignore: Default::default(),
+                        reject: Default::default(),
+                        location: line.location.clone(),
+                    }))
+                },
+            )?;
             builder.patterns.push(new_pattern);
         } else if text.starts_with("choice {") {
-            let new_pattern = parse_next(true, line.line, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Choice(subpatterns)
-            })?;
+            let new_pattern = parse_next(
+                true,
+                line.location.clone(),
+                &mut pattern,
+                grok,
+                |subpatterns| OutputPatternType::Choice(subpatterns),
+            )?;
             builder.patterns.push(new_pattern);
         } else if text.starts_with("unordered {") {
-            let new_pattern = parse_next(true, line.line, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Unordered(subpatterns)
-            })?;
+            let new_pattern = parse_next(
+                true,
+                line.location.clone(),
+                &mut pattern,
+                grok,
+                |subpatterns| OutputPatternType::Unordered(subpatterns),
+            )?;
             builder.patterns.push(new_pattern);
         } else if text.starts_with("ignore {") {
-            let (next, rest) = parse_maybe_block(true, rest, grok)?;
+            let (next, rest) = parse_maybe_block(true, line.location.clone(), rest, grok)?;
             if !next.ignore.is_empty() || !next.reject.is_empty() {
-                return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
+                return Err(ScriptError::new(
+                    ScriptErrorType::InvalidPattern,
+                    line.location.clone(),
+                ));
             }
             builder.ignore.extend(next.patterns);
             pattern = rest;
         } else if text.starts_with("reject {") {
-            let (next, rest) = parse_maybe_block(true, rest, grok)?;
+            let (next, rest) = parse_maybe_block(true, line.location.clone(), rest, grok)?;
             if !next.ignore.is_empty() || !next.reject.is_empty() {
-                return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
+                return Err(ScriptError::new(
+                    ScriptErrorType::InvalidPattern,
+                    line.location.clone(),
+                ));
             }
             builder.reject.extend(next.patterns);
             pattern = rest;
         } else if text.starts_with("sequence {") {
-            let new_pattern = parse_next(true, line.line, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Sequence(subpatterns)
-            })?;
+            let new_pattern = parse_next(
+                true,
+                line.location.clone(),
+                &mut pattern,
+                grok,
+                |subpatterns| OutputPatternType::Sequence(subpatterns),
+            )?;
             builder.patterns.push(new_pattern);
         } else if text.starts_with("optional {") {
-            let new_pattern = parse_next(true, line.line, &mut pattern, grok, |subpatterns| {
-                OutputPatternType::Optional(Box::new(OutputPattern {
-                    pattern: OutputPatternType::Sequence(subpatterns),
-                    ignore: Default::default(),
-                    reject: Default::default(),
-                    line: line.line,
-                }))
-            })?;
+            let new_pattern = parse_next(
+                true,
+                line.location.clone(),
+                &mut pattern,
+                grok,
+                |subpatterns| {
+                    OutputPatternType::Optional(Box::new(OutputPattern {
+                        pattern: OutputPatternType::Sequence(subpatterns),
+                        ignore: Default::default(),
+                        reject: Default::default(),
+                        location: line.location.clone(),
+                    }))
+                },
+            )?;
             builder.patterns.push(new_pattern);
         } else {
             eprintln!("invalid line: {text}");
-            return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
+            return Err(ScriptError::new(
+                ScriptErrorType::InvalidPattern,
+                line.location.clone(),
+            ));
         }
     }
     if block {
-        return Err(ScriptError::new(ScriptErrorType::InvalidPattern, 0));
+        return Err(ScriptError::new(
+            ScriptErrorType::InvalidPattern,
+            location.clone(),
+        ));
     }
     Ok((builder, pattern))
 }
 
 fn parse_pattern_line(
     grok: &mut Grok,
-    line: usize,
+    location: ScriptLocation,
     text: &str,
     line_start: char,
 ) -> Result<OutputPattern, ScriptError> {
@@ -395,7 +459,7 @@ fn parse_pattern_line(
             pattern: OutputPatternType::Literal("".to_string()),
             ignore: Default::default(),
             reject: Default::default(),
-            line,
+            location,
         });
     }
 
@@ -405,29 +469,32 @@ fn parse_pattern_line(
                 pattern: OutputPatternType::Literal(text.to_string()),
                 ignore: Default::default(),
                 reject: Default::default(),
-                line,
+                location,
             });
         }
 
         let pattern = GrokPattern::compile(grok, text, true)
-            .map_err(|e| ScriptError::new(ScriptErrorType::InvalidPattern, line))?;
+            .map_err(|e| ScriptError::new(ScriptErrorType::InvalidPattern, location.clone()))?;
         Ok(OutputPattern {
             pattern: OutputPatternType::Pattern(Arc::new(pattern)),
             ignore: Default::default(),
             reject: Default::default(),
-            line,
+            location,
         })
     } else if line_start == '?' {
         let pattern = GrokPattern::compile(grok, text, false)
-            .map_err(|e| ScriptError::new(ScriptErrorType::InvalidPattern, line))?;
+            .map_err(|e| ScriptError::new(ScriptErrorType::InvalidPattern, location.clone()))?;
         Ok(OutputPattern {
             pattern: OutputPatternType::Pattern(Arc::new(pattern)),
             ignore: Default::default(),
             reject: Default::default(),
-            line,
+            location,
         })
     } else {
-        Err(ScriptError::new(ScriptErrorType::InvalidPattern, line))
+        Err(ScriptError::new(
+            ScriptErrorType::InvalidPattern,
+            location.clone(),
+        ))
     }
 }
 
@@ -438,8 +505,14 @@ mod tests {
     use super::*;
 
     fn parse_pattern(pattern: &str) -> Result<OutputPattern, ScriptError> {
-        let lines = ScriptLine::parse(pattern);
-        parse_output_pattern(0, &lines, &[], &[], &mut Grok::with_default_patterns())
+        let lines = ScriptLine::parse(ScriptFile::new("test.cli".into()), pattern);
+        parse_output_pattern(
+            ScriptLocation::new(ScriptFile::new("test.cli".into()), 0),
+            &lines,
+            &[],
+            &[],
+            &mut Grok::with_default_patterns(),
+        )
     }
 
     fn parse_lines(lines: &str) -> Result<Lines, ScriptError> {

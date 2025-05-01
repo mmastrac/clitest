@@ -10,17 +10,20 @@ use serde::Serialize;
 use shellish_parse::ParseOptions;
 use termcolor::Color;
 
-use crate::{cprint, cprintln, script::Lines};
+use crate::{
+    cprint, cprintln,
+    script::{Lines, ScriptLocation},
+};
 
 #[derive(Debug, Serialize)]
 pub struct CommandLine {
     pub command: String,
-    pub line: usize,
+    pub location: ScriptLocation,
 }
 
 impl CommandLine {
-    pub fn new(command: String, line: usize) -> Self {
-        Self { command, line }
+    pub fn new(command: String, location: ScriptLocation) -> Self {
+        Self { command, location }
     }
 
     pub fn run(

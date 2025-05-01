@@ -1,7 +1,7 @@
 use clitest::{
     cprint, cprintln,
     parser::parse_script,
-    script::ScriptRunArgs,
+    script::{ScriptFile, ScriptRunArgs},
     term::{self, Color},
 };
 use std::path::Path;
@@ -35,7 +35,7 @@ fn main() {
             cprint!(fg = Color::Green, "{test_name} ({test_dir_name})");
             cprint!(" ... ");
 
-            let script = parse_script(&test_content).unwrap();
+            let script = parse_script(ScriptFile::new(test.path()), &test_content).unwrap();
             total += 1;
             if let Err(e) = script.run(ScriptRunArgs {
                 delay_steps: None,

@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    path::{Path, PathBuf},
     process::ExitStatus,
     sync::{Arc, Mutex},
 };
@@ -7,7 +8,7 @@ use std::{
 use grok::Grok;
 use serde::Serialize;
 
-use crate::command::CommandLine;
+use crate::{command::CommandLine, cprintln_rule};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -69,7 +70,7 @@ impl Lines {
                             rejected_pattern.matches(context.ignore(), ignore_check.clone())
                         {
                             return Err(OutputPatternMatchFailure {
-                                script_line: rejected_pattern.line,
+                                location: rejected_pattern.location.clone(),
                                 pattern_type: "reject",
                                 output_line: None,
                             });
@@ -128,6 +129,66 @@ impl Lines {
     }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ScriptLocation {
+    pub file: ScriptFile,
+    pub line: usize,
+}
+
+impl ScriptLocation {
+    pub fn new(file: ScriptFile, line: usize) -> Self {
+        Self { file, line }
+    }
+}
+
+impl std::fmt::Display for ScriptLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.file, self.line)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ScriptFile {
+    pub file: Arc<PathBuf>,
+}
+
+impl ScriptFile {
+    /// Normalizes/prettifies the path if we can.
+    pub fn new(file: PathBuf) -> Self {
+        if cfg!(unix) {
+            if let Ok(canonical) = file.canonicalize() {
+                if let Some(home) = dirs::home_dir() {
+                    if canonical.starts_with(&home) {
+                        if let Some(diff) = pathdiff::diff_paths(&canonical, home) {
+                            return Self {
+                                file: Arc::new(Path::new("~").join(diff)),
+                            };
+                        }
+                    }
+                }
+                if let Ok(tmp) = Path::new("/tmp").canonicalize() {
+                    if canonical.starts_with(&tmp) {
+                        if let Some(diff) = pathdiff::diff_paths(&canonical, &tmp) {
+                            return Self {
+                                file: Arc::new(Path::new("/tmp").join(diff)),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        Self {
+            file: Arc::new(file),
+        }
+    }
+}
+
+impl std::fmt::Display for ScriptFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.file.display())
+    }
+}
+
 #[derive(derive_more::Debug, Serialize)]
 pub struct Script {
     pub commands: Vec<ScriptCommand>,
@@ -147,17 +208,17 @@ pub struct ScriptRunArgs {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScriptLine {
-    pub line: usize,
+    pub location: ScriptLocation,
     pub text: String,
 }
 
 impl ScriptLine {
-    pub fn parse(text: impl AsRef<str>) -> Vec<Self> {
+    pub fn parse(file: ScriptFile, text: impl AsRef<str>) -> Vec<Self> {
         text.as_ref()
             .lines()
             .enumerate()
             .map(|(line, text)| Self {
-                line: line + 1,
+                location: ScriptLocation::new(file.clone(), line + 1),
                 text: text.to_string(),
             })
             .collect()
@@ -165,15 +226,15 @@ impl ScriptLine {
 }
 
 #[derive(Debug, thiserror::Error, derive_more::Display)]
-#[display("{error} at line {line}")]
+#[display("{error} at {location}")]
 pub struct ScriptError {
     pub error: ScriptErrorType,
-    pub line: usize,
+    pub location: ScriptLocation,
 }
 
 impl ScriptError {
-    pub fn new(error: ScriptErrorType, line: usize) -> Self {
-        Self { error, line }
+    pub fn new(error: ScriptErrorType, location: ScriptLocation) -> Self {
+        Self { error, location }
     }
 }
 
@@ -201,11 +262,13 @@ pub enum ScriptErrorType {
     InvalidSetVariable,
     #[error("invalid version")]
     InvalidVersion,
+    #[error("missing command lines")]
+    MissingCommandLines,
 }
 
 #[derive(Clone, Serialize)]
 pub struct OutputPattern {
-    pub line: usize,
+    pub location: ScriptLocation,
     pub pattern: OutputPatternType,
     pub ignore: Arc<Vec<OutputPattern>>,
     pub reject: Arc<Vec<OutputPattern>>,
@@ -224,10 +287,10 @@ impl OutputPattern {
         output: Lines,
     ) -> Result<Lines, OutputPatternMatchFailure> {
         if self.ignore.is_empty() && self.reject.is_empty() {
-            self.pattern.matches(self.line, context, output)
+            self.pattern.matches(&self.location, context, output)
         } else {
-            let mut output = output.with_ignore(&self.ignore).with_reject(&self.reject);
-            self.pattern.matches(self.line, context, output)
+            let output = output.with_ignore(&self.ignore).with_reject(&self.reject);
+            self.pattern.matches(&self.location, context, output)
         }
     }
 }
@@ -349,9 +412,9 @@ pub enum ScriptRunError {
 }
 
 #[derive(Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
-#[display("pattern {pattern_type} at line {script_line} does not match output line {:?}", output_line.as_ref().map(|l| l.text.clone()).unwrap_or("<eof>".to_string()))]
+#[display("pattern {pattern_type} at line {location} does not match output line {:?}", output_line.as_ref().map(|l| l.text.clone()).unwrap_or("<eof>".to_string()))]
 pub struct OutputPatternMatchFailure {
-    pub script_line: usize,
+    pub location: ScriptLocation,
     pub pattern_type: &'static str,
     pub output_line: Option<Line>,
 }
@@ -406,7 +469,7 @@ impl OutputMatchContext {
 impl OutputPatternType {
     pub fn matches<'s>(
         &self,
-        script_line: usize,
+        location: &ScriptLocation,
         context: OutputMatchContext,
         mut output: Lines,
     ) -> Result<Lines, OutputPatternMatchFailure> {
@@ -424,14 +487,14 @@ impl OutputPatternType {
                             line.text
                         ));
                         Err(OutputPatternMatchFailure {
-                            script_line,
+                            location: location.clone(),
                             pattern_type: "literal",
                             output_line: Some(line),
                         })
                     }
                 } else {
                     Err(OutputPatternMatchFailure {
-                        script_line,
+                        location: location.clone(),
                         pattern_type: "literal",
                         output_line: None,
                     })
@@ -446,7 +509,7 @@ impl OutputPatternType {
                         Ok(res) => res,
                         Err(_) => {
                             return Err(OutputPatternMatchFailure {
-                                script_line,
+                                location: location.clone(),
                                 pattern_type: "pattern",
                                 output_line: Some(line),
                             });
@@ -461,14 +524,14 @@ impl OutputPatternType {
                             line.text
                         ));
                         Err(OutputPatternMatchFailure {
-                            script_line,
+                            location: location.clone(),
                             pattern_type: "pattern",
                             output_line: Some(line),
                         })
                     }
                 } else {
                     Err(OutputPatternMatchFailure {
-                        script_line,
+                        location: location.clone(),
                         pattern_type: "pattern",
                         output_line: None,
                     })
@@ -525,7 +588,7 @@ impl OutputPatternType {
                         }
                     }
                     return Err(OutputPatternMatchFailure {
-                        script_line,
+                        location: location.clone(),
                         pattern_type: "unordered",
                         output_line: None,
                     });
@@ -539,7 +602,7 @@ impl OutputPatternType {
                     }
                 }
                 Err(OutputPatternMatchFailure {
-                    script_line,
+                    location: location.clone(),
                     pattern_type: "choice",
                     output_line: None,
                 })
@@ -579,7 +642,7 @@ impl OutputPatternType {
                 let (line, next) = output.next(context)?;
                 if let Some(line) = line {
                     Err(OutputPatternMatchFailure {
-                        script_line,
+                        location: location.clone(),
                         pattern_type: "end",
                         output_line: Some(line),
                     })
@@ -601,12 +664,7 @@ impl Script {
         for command in &self.commands {
             if !args.quiet {
                 cprintln!(fg = Color::Green, "{}", command.command.command);
-                cprintln!(
-                    dimmed = true,
-                    "{:->count$}",
-                    "",
-                    count = termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(80)
-                );
+                cprintln_rule!(fg = Color::Cyan, "{}", command.command.location);
             }
             let (output, status) = command.command.run(
                 args.quiet,
@@ -627,12 +685,7 @@ impl Script {
                 envs.insert(set_var.clone(), output.to_string().trim().to_string());
             }
             if !args.quiet {
-                cprintln!(
-                    dimmed = true,
-                    "{:->count$}",
-                    "",
-                    count = termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(80)
-                );
+                cprintln_rule!();
             }
             let context = OutputMatchContext::new();
             match command.pattern.matches(context.clone(), output) {
@@ -733,7 +786,7 @@ repeat {
 }
 "#;
 
-        let script = parse_script(script)?;
+        let script = parse_script(ScriptFile::new("test.cli".into()), script)?;
         assert_eq!(script.commands.len(), 2);
         eprintln!("{:?}", script);
         Ok(())
@@ -747,7 +800,7 @@ $ cmd &
     "#;
 
         assert!(matches!(
-            parse_script(script),
+            parse_script(ScriptFile::new("test.cli".into()), script),
             Err(ScriptError {
                 error: ScriptErrorType::BackgroundProcessNotAllowed,
                 ..
@@ -768,8 +821,15 @@ $ cmd &
         }
         "#;
         let mut grok = Grok::with_default_patterns();
-        let pattern =
-            parse_output_pattern(0, &ScriptLine::parse(pattern), &[], &[], &mut grok).unwrap();
+        let file = ScriptFile::new("test.cli".into());
+        let pattern = parse_output_pattern(
+            ScriptLocation::new(file.clone(), 0),
+            &ScriptLine::parse(file.clone(), pattern),
+            &[],
+            &[],
+            &mut grok,
+        )
+        .unwrap();
         eprintln!("{pattern:?}");
     }
 }
