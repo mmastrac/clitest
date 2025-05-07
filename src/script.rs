@@ -6,7 +6,7 @@ use std::{
 };
 
 use grok::Grok;
-use serde::Serialize;
+use serde::{Serialize, ser::SerializeMap};
 
 use crate::{command::CommandLine, cprintln_rule};
 
@@ -191,7 +191,7 @@ impl std::fmt::Display for ScriptFile {
 
 #[derive(derive_more::Debug, Serialize)]
 pub struct Script {
-    pub commands: Vec<ScriptCommand>,
+    pub commands: Vec<ScriptBlock>,
     #[debug(skip)]
     #[serde(skip)]
     pub grok: Grok,
@@ -204,6 +204,11 @@ pub struct ScriptRunArgs {
     pub quiet: bool,
     pub show_line_numbers: bool,
     pub runner: Option<String>,
+}
+
+pub struct ScriptRunContext {
+    pub args: ScriptRunArgs,
+    pub envs: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -324,6 +329,8 @@ pub enum ScriptErrorType {
         "block end without matching block start, too many closing braces or braces not properly nested"
     )]
     InvalidBlockEnd,
+    #[error("invalid if condition")]
+    InvalidIfCondition,
 }
 
 #[derive(Clone)]
@@ -835,81 +842,9 @@ impl OutputPatternType {
 }
 
 impl Script {
-    pub fn run(&self, args: ScriptRunArgs) -> Result<(), ScriptRunError> {
-        use crate::{cprintln, term::Color};
-        use std::collections::HashMap;
-
-        let mut envs = HashMap::new();
-
+    pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
         for command in &self.commands {
-            if !args.quiet {
-                cprintln!(fg = Color::Green, "{}", command.command.command);
-                cprintln_rule!(fg = Color::Cyan, "{}", command.command.location);
-            }
-            let (output, status) = command.command.run(
-                args.quiet,
-                args.show_line_numbers,
-                args.runner.clone(),
-                &envs,
-            )?;
-            if !command.exit.matches(status) {
-                println!("❌ FAIL: {status}");
-                if !args.ignore_exit_codes {
-                    return Err(ScriptRunError::Exit(status));
-                }
-            }
-            if output.is_empty() && !args.quiet {
-                cprintln!(dimmed = true, "(no output)");
-            }
-            if let Some(set_var) = &command.set_var {
-                envs.insert(set_var.clone(), output.to_string().trim().to_string());
-            }
-            if !args.quiet {
-                cprintln_rule!();
-            }
-            let context = OutputMatchContext::new();
-            match command.pattern.matches(context.clone(), output) {
-                Ok(_) => {
-                    if command.expect_failure {
-                        if !args.quiet {
-                            println!("❌ Expected failure, but passed");
-                        }
-                        if !args.ignore_matches {
-                            return Err(ScriptRunError::ExpectedFailure);
-                        }
-                    } else {
-                        if !args.quiet {
-                            println!("✅ OK");
-                        }
-                    }
-                }
-                Err(e) => {
-                    if !command.expect_failure {
-                        println!("ERROR: {e}");
-                        for line in context.traces() {
-                            println!("{line}");
-                        }
-                    }
-                    if command.expect_failure {
-                        if !args.quiet {
-                            println!("✅ OK (expected failure)");
-                        }
-                    } else {
-                        if !args.quiet {
-                            println!("❌ FAIL");
-                        }
-                        if !args.ignore_matches {
-                            return Err(ScriptRunError::Pattern(e));
-                        }
-                    }
-                }
-            }
-            if !args.quiet {
-                cprintln!();
-            }
-            if let Some(delay) = args.delay_steps {
-                std::thread::sleep(std::time::Duration::from_millis(delay));
-            }
+            command.run(context)?;
         }
         Ok(())
     }
@@ -937,12 +872,71 @@ impl CommandExit {
     }
 }
 
+#[derive(Debug)]
 pub enum ScriptBlock {
     Command(ScriptCommand),
     If(IfCondition, Vec<ScriptBlock>),
     For(ForCondition, Vec<ScriptBlock>),
 }
 
+impl ScriptBlock {
+    pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
+        match self {
+            ScriptBlock::Command(command) => command.run(context)?,
+            ScriptBlock::If(IfCondition::True, blocks) => {
+                for block in blocks {
+                    block.run(context)?;
+                }
+            }
+            ScriptBlock::If(IfCondition::False, _) => {}
+            ScriptBlock::If(IfCondition::EnvEq(negated, target, expected_value), blocks) => {
+                if let Some(value) = context.envs.get(target) {
+                    let success = (value == expected_value) ^ negated;
+                    if success {
+                        for block in blocks {
+                            block.run(context)?;
+                        }
+                    }
+                }
+            }
+            ScriptBlock::For(ForCondition::Env(env, values), blocks) => {
+                for value in values {
+                    context.envs.insert(env.clone(), value.clone());
+                    for block in blocks {
+                        block.run(context)?;
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+}
+
+impl Serialize for ScriptBlock {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ScriptBlock::Command(command) => command.serialize(serializer),
+            ScriptBlock::If(condition, blocks) => {
+                let mut ser = serializer.serialize_map(Some(2))?;
+                ser.serialize_entry("if", condition)?;
+                ser.serialize_entry("blocks", blocks)?;
+                ser.end()
+            }
+            ScriptBlock::For(condition, blocks) => {
+                let mut ser = serializer.serialize_map(Some(2))?;
+                ser.serialize_entry("for", condition)?;
+                ser.serialize_entry("blocks", blocks)?;
+                ser.end()
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum IfCondition {
     True,
     False,
@@ -950,8 +944,42 @@ pub enum IfCondition {
     EnvEq(bool, String, String),
 }
 
+impl Serialize for IfCondition {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            IfCondition::True => "true".serialize(serializer),
+            IfCondition::False => "false".serialize(serializer),
+            IfCondition::TargetEq(negated, target, value) => {
+                let mut ser = serializer.serialize_map(Some(2))?;
+                ser.serialize_entry("target", target)?;
+                ser.serialize_entry("value", value)?;
+                ser.end()
+            }
+            IfCondition::EnvEq(negated, name, value) => {
+                let mut ser = serializer.serialize_map(Some(2))?;
+                ser.serialize_entry("env", name)?;
+                ser.serialize_entry("value", value)?;
+                ser.end()
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ForCondition {
     Env(String, Vec<String>),
+}
+
+impl Serialize for ForCondition {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
 }
 
 fn is_bool_false(b: &bool) -> bool {
@@ -968,6 +996,87 @@ pub struct ScriptCommand {
     pub expect_failure: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub set_var: Option<String>,
+}
+
+impl ScriptCommand {
+    pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
+        use crate::{cprintln, cprintln_rule, term::Color};
+
+        let command = &self.command;
+        let args = &context.args;
+
+        if !args.quiet {
+            cprintln!(fg = Color::Green, "{}", command.command);
+            cprintln_rule!(fg = Color::Cyan, "{}", command.location);
+        }
+        let (output, status) = command.run(
+            context.args.quiet,
+            context.args.show_line_numbers,
+            context.args.runner.clone(),
+            &context.envs,
+        )?;
+        if !self.exit.matches(status) {
+            println!("❌ FAIL: {status}");
+            if !args.ignore_exit_codes {
+                return Err(ScriptRunError::Exit(status));
+            }
+        }
+        if output.is_empty() && !args.quiet {
+            cprintln!(dimmed = true, "(no output)");
+        }
+        if let Some(set_var) = &self.set_var {
+            context
+                .envs
+                .insert(set_var.clone(), output.to_string().trim().to_string());
+        }
+        if !args.quiet {
+            cprintln_rule!();
+        }
+        let context = OutputMatchContext::new();
+        match self.pattern.matches(context.clone(), output) {
+            Ok(_) => {
+                if self.expect_failure {
+                    if !args.quiet {
+                        println!("❌ Expected failure, but passed");
+                    }
+                    if !args.ignore_matches {
+                        return Err(ScriptRunError::ExpectedFailure);
+                    }
+                } else {
+                    if !args.quiet {
+                        println!("✅ OK");
+                    }
+                }
+            }
+            Err(e) => {
+                if !self.expect_failure {
+                    println!("ERROR: {e}");
+                    for line in context.traces() {
+                        println!("{line}");
+                    }
+                }
+                if self.expect_failure {
+                    if !args.quiet {
+                        println!("✅ OK (expected failure)");
+                    }
+                } else {
+                    if !args.quiet {
+                        println!("❌ FAIL");
+                    }
+                    if !args.ignore_matches {
+                        return Err(ScriptRunError::Pattern(e));
+                    }
+                }
+            }
+        }
+        if !args.quiet {
+            cprintln!();
+        }
+        if let Some(delay) = args.delay_steps {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

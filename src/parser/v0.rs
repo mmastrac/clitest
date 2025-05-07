@@ -1,12 +1,14 @@
 use std::{path::PathBuf, process::Output, sync::Arc};
 
 use grok::Grok;
+use shellish_parse::ParseOptions;
 
 use crate::{
     command::CommandLine,
     script::{
-        CommandExit, GrokPattern, OutputPattern, OutputPatternType, Script, ScriptCommand,
-        ScriptError, ScriptErrorType, ScriptFile, ScriptLine, ScriptLocation,
+        CommandExit, ForCondition, GrokPattern, IfCondition, OutputPattern, OutputPatternType,
+        Script, ScriptBlock, ScriptCommand, ScriptError, ScriptErrorType, ScriptFile, ScriptLine,
+        ScriptLocation,
     },
 };
 
@@ -109,7 +111,7 @@ impl std::fmt::Debug for ScriptV0Block {
 /// the script.
 enum ScriptV0Segment {
     Block(ScriptV0Block),
-    SubBlock(ScriptLocation, String, Vec<ScriptV0Segment>),
+    SubBlock(ScriptLocation, String, String, Vec<ScriptV0Segment>),
 }
 
 impl std::fmt::Debug for ScriptV0Segment {
@@ -120,8 +122,8 @@ impl std::fmt::Debug for ScriptV0Segment {
             // HACK: Indent the segments by using width, but don't print indent here
             match self {
                 ScriptV0Segment::Block(block) => writeln!(f, "{:#indent$?}", block),
-                ScriptV0Segment::SubBlock(location, text, segments) => {
-                    writeln!(f, "{indent_str}:{} {text:?} {{", location.line)?;
+                ScriptV0Segment::SubBlock(location, text, args, segments) => {
+                    writeln!(f, "{indent_str}:{} {text:?}{args:?} {{", location.line)?;
                     for segment in segments {
                         write!(f, "{segment:#indent$?}", indent = indent + 2)?;
                     }
@@ -137,10 +139,11 @@ impl std::fmt::Debug for ScriptV0Segment {
                     .field("block_type", &block.block_type)
                     .field("lines", &block.lines)
                     .finish(),
-                ScriptV0Segment::SubBlock(location, text, segments) => f
+                ScriptV0Segment::SubBlock(location, text, args, segments) => f
                     .debug_struct("SubBlock")
                     .field("location", &location)
                     .field("text", &text)
+                    .field("args", &args)
                     .field("segments", &segments)
                     .finish(),
             }
@@ -152,7 +155,7 @@ impl ScriptV0Segment {
     fn is_empty(&self) -> bool {
         match self {
             ScriptV0Segment::Block(block) => block.lines.is_empty(),
-            ScriptV0Segment::SubBlock(_, text, segments) => {
+            ScriptV0Segment::SubBlock(_, text, _args, segments) => {
                 text != "*"
                     && (segments.is_empty() || segments.iter().all(|segment| segment.is_empty()))
             }
@@ -179,138 +182,15 @@ impl ScriptV0Segment {
         }
     }
 
-    /// Remove all ineffectual blocks, and merge consecutive blocks that are of the same type.
-    fn normalize(segments: Vec<Self>) -> Vec<Self> {
-        let mut new_segments = vec![];
-        let mut first_command = true;
-
-        let Some(last_line) = segments.last().map(|segment| segment.location().clone()) else {
-            return segments;
-        };
-
-        for mut segment in segments {
-            match segment {
-                ScriptV0Segment::Block(ref mut block) => {
-                    debug_assert!(
-                        !block.lines.is_empty(),
-                        "empty blocks should not exist here"
-                    );
-                    if block.block_type.is_ineffectual() {
-                        continue;
-                    }
-                    if block.block_type.is_command() {
-                        // Add a virtual "end" block to the end of the last command block.
-                        if first_command {
-                            first_command = false;
-                        } else {
-                            let line = ScriptLine::new(
-                                block.location.file.clone(),
-                                block.location.line - 1,
-                                "end".to_string(),
-                            );
-                            if let Some(ScriptV0Segment::Block(last_block)) =
-                                new_segments.last_mut()
-                            {
-                                if last_block.block_type.is_pattern() {
-                                    last_block.lines.push(line);
-                                } else {
-                                    new_segments.push(ScriptV0Segment::Block(ScriptV0Block {
-                                        location: line.location.clone(),
-                                        block_type: BlockType::Pattern,
-                                        lines: vec![line],
-                                    }));
-                                }
-                            } else {
-                                new_segments.push(ScriptV0Segment::Block(ScriptV0Block {
-                                    location: line.location.clone(),
-                                    block_type: BlockType::Pattern,
-                                    lines: vec![line],
-                                }));
-                            }
-                        }
-                    }
-                    if let Some(ScriptV0Segment::Block(last_block)) = new_segments.last_mut() {
-                        if block.block_type.is_command() {
-                            new_segments.push(segment);
-                        } else if block.block_type.is_same_type_as(&last_block.block_type) {
-                            last_block.lines.extend(std::mem::take(&mut block.lines));
-                        } else {
-                            new_segments.push(segment);
-                        }
-                    } else {
-                        new_segments.push(segment);
-                    }
-                }
-                ScriptV0Segment::SubBlock(location, text, segments) => {
-                    let normalized = ScriptV0Segment::normalize(segments);
-                    if !normalized.is_empty() {
-                        new_segments.push(ScriptV0Segment::SubBlock(location, text, normalized));
-                    }
-                }
-            }
-        }
-
-        // Add a virtual "end" block to the end of the last command block.
-        if !first_command {
-            let line = ScriptLine::new(last_line.file.clone(), last_line.line, "end".to_string());
-            if let Some(ScriptV0Segment::Block(last_block)) = new_segments.last_mut() {
-                if last_block.block_type.is_pattern() {
-                    last_block.lines.push(line);
-                } else {
-                    new_segments.push(ScriptV0Segment::Block(ScriptV0Block {
-                        location: line.location.clone(),
-                        block_type: BlockType::Pattern,
-                        lines: vec![line],
-                    }));
-                }
-            } else {
-                new_segments.push(ScriptV0Segment::Block(ScriptV0Block {
-                    location: line.location.clone(),
-                    block_type: BlockType::Pattern,
-                    lines: vec![line],
-                }));
-            }
-        }
-
-        // Pass 2: Convert any "any"-type blocks to sub-blocks and steal the next line or non-command subblock.
-        let mut i = 0;
-        while i < new_segments.len() {
-            if let ScriptV0Segment::Block(block) = &mut new_segments[i] {
-                if block.block_type.is_any() {
-                    let location = block.location.clone();
-                    new_segments[i] =
-                        ScriptV0Segment::SubBlock(location.clone(), "*".to_string(), vec![]);
-
-                    if i + 1 < new_segments.len() {
-                        if let Some(first) = new_segments[i + 1].split_first() {
-                            new_segments[i] = ScriptV0Segment::SubBlock(
-                                location.clone(),
-                                "*".to_string(),
-                                vec![first],
-                            );
-                        }
-                    }
-                }
-            }
-            if new_segments[i].is_empty() {
-                new_segments.remove(i);
-            } else {
-                i += 1;
-            }
-        }
-
-        new_segments
-    }
-
     /// Returns true if this segment is a command block, or the first block it
     /// contains is a command block. Note that this should only be called on
     /// normalized segments.
     fn is_command_block(&self) -> bool {
         match self {
             ScriptV0Segment::Block(block) => block.block_type.is_command(),
-            ScriptV0Segment::SubBlock(_, _, segments) => segments
-                .first()
-                .map_or(false, |segment| segment.is_command_block()),
+            ScriptV0Segment::SubBlock(.., segments) => {
+                segments.iter().any(|segment| segment.is_command_block())
+            }
         }
     }
 
@@ -324,14 +204,14 @@ impl ScriptV0Segment {
     fn location(&self) -> &ScriptLocation {
         match self {
             ScriptV0Segment::Block(block) => &block.location,
-            ScriptV0Segment::SubBlock(location, _, _) => location,
+            ScriptV0Segment::SubBlock(location, ..) => location,
         }
     }
 
     fn last_location(&self) -> &ScriptLocation {
         match self {
             ScriptV0Segment::Block(block) => &block.lines.last().unwrap().location,
-            ScriptV0Segment::SubBlock(location, _, segments) => {
+            ScriptV0Segment::SubBlock(location, .., segments) => {
                 if let Some(last) = segments.last() {
                     last.last_location()
                 } else {
@@ -345,7 +225,7 @@ impl ScriptV0Segment {
 pub fn parse_script(file_name: ScriptFile, script: &str) -> Result<Script, ScriptError> {
     let lines = ScriptLine::parse(file_name.clone(), script);
     let segments = segment_script(true, &mut lines.as_slice())?;
-    let normalized = ScriptV0Segment::normalize(segments);
+    let normalized = normalize_segments(segments);
     parse_normalized_script_v0(&normalized)
 }
 
@@ -358,7 +238,7 @@ fn segment_script(
     let mut segments = Vec::new();
     let mut current_segment = None;
 
-    fn is_subblock(text: &str) -> Option<&str> {
+    fn is_subblock(text: &str) -> Option<(&str, &str)> {
         // Workaround for missing let chains
         if text
             .chars()
@@ -367,7 +247,13 @@ fn segment_script(
             .unwrap_or_default()
             .is_alphabetic()
         {
-            text.strip_suffix("{")
+            text.strip_suffix("{").map(|text| {
+                if let Some((block_type, args)) = text.trim().split_once(char::is_whitespace) {
+                    (block_type.trim(), args.trim())
+                } else {
+                    (text.trim(), "")
+                }
+            })
         } else {
             None
         }
@@ -424,11 +310,10 @@ fn segment_script(
                 lines: block_lines,
                 location: line.location.clone(),
             }));
-        } else if let Some(trimmed) = is_subblock(line.text()) {
+        } else if let Some((block_type, args)) = is_subblock(line.text()) {
             if let Some(segment) = current_segment.take() {
                 segments.push(ScriptV0Segment::Block(segment));
             }
-            let text = trimmed.trim_end().to_owned();
             // Temporaraliy swap from iterator to slice
             let mut rest = lines.as_slice();
             if rest.is_empty() {
@@ -439,7 +324,8 @@ fn segment_script(
             }
             segments.push(ScriptV0Segment::SubBlock(
                 line.location.clone(),
-                text,
+                block_type.to_string(),
+                args.to_string(),
                 segment_script(false, &mut rest)?,
             ));
             lines = rest.into_iter();
@@ -497,6 +383,101 @@ fn segment_script(
     }
 
     Ok(segments)
+}
+
+fn insert_virtual_end_block(location: ScriptLocation, segments: &mut Vec<ScriptV0Segment>) {
+    let line = ScriptLine::new(location.file.clone(), location.line - 1, "end".to_string());
+
+    segments.push(ScriptV0Segment::Block(ScriptV0Block {
+        location: line.location.clone(),
+        block_type: BlockType::Pattern,
+        lines: vec![line],
+    }));
+}
+
+/// Remove all ineffectual blocks, and merge consecutive blocks that are of the same type.
+fn normalize_segments(segments: Vec<ScriptV0Segment>) -> Vec<ScriptV0Segment> {
+    let mut new_segments = vec![];
+    let mut command_needs_end = false;
+
+    let Some(last_line) = segments.last().map(|segment| segment.location().clone()) else {
+        return segments;
+    };
+
+    for mut segment in segments {
+        if segment.is_command_block() && command_needs_end {
+            insert_virtual_end_block(segment.location().clone(), &mut new_segments);
+            command_needs_end = false;
+        }
+        match segment {
+            ScriptV0Segment::Block(ref mut block) => {
+                debug_assert!(
+                    !block.lines.is_empty(),
+                    "empty blocks should not exist here"
+                );
+                if block.block_type.is_ineffectual() {
+                    continue;
+                }
+                if block.block_type.is_command() {
+                    command_needs_end = true;
+                }
+                if let Some(ScriptV0Segment::Block(last_block)) = new_segments.last_mut() {
+                    if block.block_type.is_command() {
+                        new_segments.push(segment);
+                    } else if block.block_type.is_same_type_as(&last_block.block_type) {
+                        last_block.lines.extend(std::mem::take(&mut block.lines));
+                    } else {
+                        new_segments.push(segment);
+                    }
+                } else {
+                    new_segments.push(segment);
+                }
+            }
+            ScriptV0Segment::SubBlock(location, text, args, segments) => {
+                let normalized = normalize_segments(segments);
+                new_segments.push(ScriptV0Segment::SubBlock(location, text, args, normalized));
+            }
+        }
+    }
+
+    // Add a virtual "end" block to the end of the last command block.
+    if command_needs_end {
+        insert_virtual_end_block(last_line, &mut new_segments);
+    }
+
+    // Pass 2: Convert any "any"-type blocks to sub-blocks and steal the next line or non-command subblock.
+    let mut i = 0;
+    while i < new_segments.len() {
+        if let ScriptV0Segment::Block(block) = &mut new_segments[i] {
+            if block.block_type.is_any() {
+                let location = block.location.clone();
+                new_segments[i] = ScriptV0Segment::SubBlock(
+                    location.clone(),
+                    "*".to_string(),
+                    "".to_string(),
+                    vec![],
+                );
+
+                if i + 1 < new_segments.len() {
+                    if let Some(first) = new_segments[i + 1].split_first() {
+                        new_segments[i] = ScriptV0Segment::SubBlock(
+                            location.clone(),
+                            "*".to_string(),
+                            "".to_string(),
+                            vec![first],
+                        );
+                    }
+                }
+            }
+        }
+        if new_segments[i].is_empty() {
+            new_segments.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+
+    new_segments
 }
 
 pub fn parse_command_line(
@@ -580,10 +561,93 @@ fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, Sc
     let global_ignore = builder.ignore;
     let global_reject = builder.reject;
 
-    let mut commands = vec![];
+    let commands =
+        parse_normalized_script_v0_commands(&rest, &mut grok, &global_ignore, &global_reject)?;
 
-    while let Some((command, remaining)) = rest.split_first() {
-        debug_assert!(command.is_command_block());
+    Ok(Script { commands, grok })
+}
+
+fn parse_normalized_script_v0_commands(
+    mut segments: &[ScriptV0Segment],
+    grok: &mut Grok,
+    global_ignore: &Vec<OutputPattern>,
+    global_reject: &Vec<OutputPattern>,
+) -> Result<Vec<ScriptBlock>, ScriptError> {
+    let mut commands = vec![];
+    while let Some((command, remaining)) = segments.split_first() {
+        debug_assert!(command.is_command_block(), "{command:?}");
+
+        if let ScriptV0Segment::SubBlock(_, block_type, args, sub_segments) = command {
+            let blocks = parse_normalized_script_v0_commands(
+                sub_segments,
+                grok,
+                global_ignore,
+                global_reject,
+            )?;
+
+            let text = format!("{} {}", block_type, args).trim().to_owned();
+            let args = shellish_parse::parse(&args, ParseOptions::default()).map_err(|_| {
+                ScriptError::new_with_data(
+                    ScriptErrorType::InvalidBlockType,
+                    command.location().clone(),
+                    text.clone(),
+                )
+            })?;
+
+            if block_type == "if" {
+                if args.len() == 1 && args[0] == "true" {
+                    commands.push(ScriptBlock::If(IfCondition::True, blocks));
+                } else if args.len() == 1 && args[0] == "false" {
+                    commands.push(ScriptBlock::If(IfCondition::False, blocks));
+                } else if args.len() == 3 && args[1] == "==" {
+                    commands.push(ScriptBlock::If(
+                        IfCondition::EnvEq(false, args[0].clone(), args[2].clone()),
+                        blocks,
+                    ));
+                } else if args.len() == 3 && args[1] == "!=" {
+                    commands.push(ScriptBlock::If(
+                        IfCondition::EnvEq(true, args[0].clone(), args[2].clone()),
+                        blocks,
+                    ));
+                } else {
+                    return Err(ScriptError::new_with_data(
+                        ScriptErrorType::InvalidBlockType,
+                        command.location().clone(),
+                        text,
+                    ));
+                }
+            } else if block_type == "for" {
+                if args.len() >= 3 && args[1] == "in" {
+                    commands.push(ScriptBlock::For(
+                        ForCondition::Env(args[0].clone(), args[2..].to_vec()),
+                        blocks,
+                    ));
+                } else {
+                    return Err(ScriptError::new_with_data(
+                        ScriptErrorType::InvalidBlockType,
+                        command.location().clone(),
+                        text,
+                    ));
+                }
+            } else {
+                return Err(ScriptError::new_with_data(
+                    ScriptErrorType::InvalidBlockType,
+                    command.location().clone(),
+                    block_type.clone(),
+                ));
+            }
+
+            segments = remaining;
+            continue;
+        }
+
+        let next_command = remaining
+            .iter()
+            .position(|segment| segment.is_command_block())
+            .unwrap_or(remaining.len());
+        let mut pattern;
+        (pattern, segments) = remaining.split_at(next_command);
+
         let location = command.location().clone();
         let mut command = ScriptCommand {
             command: match command {
@@ -600,13 +664,6 @@ fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, Sc
             expect_failure: false,
             set_var: None,
         };
-
-        let next_command = remaining
-            .iter()
-            .position(|segment| segment.is_command_block())
-            .unwrap_or(remaining.len());
-        let mut pattern;
-        (pattern, rest) = remaining.split_at(next_command);
 
         if let Some(ScriptV0Segment::Block(maybe_meta)) = pattern.first() {
             if maybe_meta.block_type.is_meta() {
@@ -640,7 +697,7 @@ fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, Sc
             }
         }
 
-        let builder = parse_script_v0_segments(pattern, &mut grok)?;
+        let builder = parse_script_v0_segments(pattern, grok)?;
         command.pattern = OutputPattern::new_sequence(location, builder.patterns);
         command.pattern.ignore = global_ignore
             .iter()
@@ -654,10 +711,9 @@ fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, Sc
             .chain(builder.reject.iter().cloned())
             .collect::<Vec<_>>()
             .into();
-        commands.push(command);
+        commands.push(ScriptBlock::Command(command));
     }
-
-    Ok(Script { commands, grok })
+    Ok(commands)
 }
 
 fn parse_script_v0_segments(
@@ -666,150 +722,165 @@ fn parse_script_v0_segments(
 ) -> Result<OutputPatternBuilder, ScriptError> {
     let mut builder = OutputPatternBuilder::default();
     for segment in segments {
-        if segment.is_command_block() {
-            return Err(ScriptError::new(
-                ScriptErrorType::UnsupportedCommandPosition,
-                segment.location().clone(),
-            ));
-        }
-        match segment {
-            ScriptV0Segment::Block(block) => {
-                let mut pattern = block.lines.as_slice();
-                while let Some((line, rest)) = pattern.split_first() {
-                    pattern = rest;
-                    if line.text() == "!!!" {
-                        while let Some((line, rest)) = pattern.split_first() {
-                            pattern = rest;
-                            if line.text() == "!!!" {
-                                break;
-                            } else {
-                                builder.patterns.push(parse_pattern_line(
-                                    grok,
-                                    line.location.clone(),
-                                    &line.text(),
-                                    '!',
-                                )?);
-                            }
-                        }
-                    } else if line.text() == "???" {
-                        while let Some((line, rest)) = pattern.split_first() {
-                            pattern = rest;
-                            if line.text() == "???" {
-                                break;
-                            } else {
-                                builder.patterns.push(parse_pattern_line(
-                                    grok,
-                                    line.location.clone(),
-                                    &line.text(),
-                                    '?',
-                                )?);
-                            }
-                        }
-                    } else if line.starts_with("!") || line.starts_with("?") {
-                        builder.patterns.push(parse_pattern_line(
-                            grok,
-                            line.location.clone(),
-                            &line.text()[1..],
-                            line.first_char().unwrap(),
-                        )?);
-                    } else if let Some(pattern) = line.strip_prefix("pattern ") {
-                        if let Some((name, pattern)) = pattern.split_once(' ') {
-                            grok.add_pattern(name, pattern);
+        parse_script_v0_segment(grok, &mut builder, segment)?;
+    }
+    Ok(builder)
+}
+
+fn parse_script_v0_segment(
+    grok: &mut Grok,
+    builder: &mut OutputPatternBuilder,
+    segment: &ScriptV0Segment,
+) -> Result<(), ScriptError> {
+    if segment.is_command_block() {
+        return Err(ScriptError::new(
+            ScriptErrorType::UnsupportedCommandPosition,
+            segment.location().clone(),
+        ));
+    }
+    match segment {
+        ScriptV0Segment::Block(block) => {
+            let mut pattern = block.lines.as_slice();
+            while let Some((line, rest)) = pattern.split_first() {
+                pattern = rest;
+                if line.text() == "!!!" {
+                    while let Some((line, rest)) = pattern.split_first() {
+                        pattern = rest;
+                        if line.text() == "!!!" {
+                            break;
                         } else {
-                            return Err(ScriptError::new(
-                                ScriptErrorType::InvalidPatternDefinition,
+                            builder.patterns.push(parse_pattern_line(
+                                grok,
                                 line.location.clone(),
-                            ));
+                                &line.text(),
+                                '!',
+                            )?);
                         }
-                    } else if line.text() == "end" {
-                        builder.patterns.push(OutputPattern {
-                            pattern: OutputPatternType::End,
-                            ignore: Default::default(),
-                            reject: Default::default(),
-                            location: line.location.clone(),
-                        });
-                    } else if line.text() == "none" {
-                        builder.patterns.push(OutputPattern {
-                            pattern: OutputPatternType::None,
-                            ignore: Default::default(),
-                            reject: Default::default(),
-                            location: line.location.clone(),
-                        });
+                    }
+                } else if line.text() == "???" {
+                    while let Some((line, rest)) = pattern.split_first() {
+                        pattern = rest;
+                        if line.text() == "???" {
+                            break;
+                        } else {
+                            builder.patterns.push(parse_pattern_line(
+                                grok,
+                                line.location.clone(),
+                                &line.text(),
+                                '?',
+                            )?);
+                        }
+                    }
+                } else if line.starts_with("!") || line.starts_with("?") {
+                    builder.patterns.push(parse_pattern_line(
+                        grok,
+                        line.location.clone(),
+                        &line.text()[1..],
+                        line.first_char().unwrap(),
+                    )?);
+                } else if let Some(pattern) = line.strip_prefix("pattern ") {
+                    if let Some((name, pattern)) = pattern.split_once(' ') {
+                        grok.add_pattern(name, pattern);
                     } else {
-                        return Err(ScriptError::new_with_data(
-                            ScriptErrorType::InvalidPattern,
+                        return Err(ScriptError::new(
+                            ScriptErrorType::InvalidPatternDefinition,
                             line.location.clone(),
-                            format!("{:?}", line.text()),
                         ));
                     }
+                } else if line.text() == "end" {
+                    builder.patterns.push(OutputPattern {
+                        pattern: OutputPatternType::End,
+                        ignore: Default::default(),
+                        reject: Default::default(),
+                        location: line.location.clone(),
+                    });
+                } else if line.text() == "none" {
+                    builder.patterns.push(OutputPattern {
+                        pattern: OutputPatternType::None,
+                        ignore: Default::default(),
+                        reject: Default::default(),
+                        location: line.location.clone(),
+                    });
+                } else {
+                    return Err(ScriptError::new_with_data(
+                        ScriptErrorType::InvalidPattern,
+                        line.location.clone(),
+                        format!("{:?}", line.text()),
+                    ));
                 }
             }
-            ScriptV0Segment::SubBlock(location, text, segments) => {
-                if text == "reject" {
-                    let next = parse_script_v0_segments(&segments, grok)?;
-                    if !next.ignore.is_empty() || !next.reject.is_empty() {
-                        return Err(ScriptError::new(
-                            ScriptErrorType::InvalidPattern,
-                            location.clone(),
-                        ));
-                    }
-                    builder.reject.extend(next.patterns);
-                } else if text == "ignore" {
-                    let next = parse_script_v0_segments(&segments, grok)?;
-                    if !next.ignore.is_empty() || !next.reject.is_empty() {
-                        return Err(ScriptError::new(
-                            ScriptErrorType::InvalidPattern,
-                            location.clone(),
-                        ));
-                    }
-                    builder.ignore.extend(next.patterns);
-                } else {
-                    let factory: &dyn Fn(&ScriptLocation, Vec<OutputPattern>) -> OutputPatternType;
-                    factory = match text.as_str() {
-                        "repeat" => &|location, patterns| {
-                            OutputPatternType::Repeat(Box::new(OutputPattern::new_sequence(
-                                location.clone(),
-                                patterns,
-                            )))
-                        },
-                        "choice" => &|_location, patterns| OutputPatternType::Choice(patterns),
-                        "unordered" => {
-                            &|_location, patterns| OutputPatternType::Unordered(patterns)
-                        }
-                        "sequence" => &|_location, patterns| OutputPatternType::Sequence(patterns),
-                        "optional" => &|location, patterns| {
-                            OutputPatternType::Optional(Box::new(OutputPattern::new_sequence(
-                                location.clone(),
-                                patterns,
-                            )))
-                        },
-                        "*" => &|location, patterns| {
-                            OutputPatternType::Any(Box::new(OutputPattern::new_sequence(
-                                location.clone(),
-                                patterns,
-                            )))
-                        },
-                        _ => {
-                            return Err(ScriptError::new(
-                                ScriptErrorType::InvalidBlockType,
-                                location.clone(),
-                            ));
-                        }
-                    };
-
-                    let new_builder = parse_script_v0_segments(&segments, grok)?;
-                    let pattern = OutputPattern {
-                        pattern: factory(location, new_builder.patterns),
-                        ignore: Arc::new(new_builder.ignore),
-                        reject: Arc::new(new_builder.reject),
-                        location: location.clone(),
-                    };
-                    builder.patterns.push(pattern);
+        }
+        ScriptV0Segment::SubBlock(location, text, args, segments) => {
+            if !args.is_empty() {
+                return Err(ScriptError::new_with_data(
+                    ScriptErrorType::InvalidPattern,
+                    location.clone(),
+                    format!("{text} {args}"),
+                ));
+            }
+            if text == "reject" {
+                let next = parse_script_v0_segments(&segments, grok)?;
+                if !next.ignore.is_empty() || !next.reject.is_empty() {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidPattern,
+                        location.clone(),
+                    ));
                 }
+                builder.reject.extend(next.patterns);
+            } else if text == "ignore" {
+                let next = parse_script_v0_segments(&segments, grok)?;
+                if !next.ignore.is_empty() || !next.reject.is_empty() {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidPattern,
+                        location.clone(),
+                    ));
+                }
+                builder.ignore.extend(next.patterns);
+            } else {
+                let factory: &dyn Fn(&ScriptLocation, Vec<OutputPattern>) -> OutputPatternType;
+                factory = match text.as_str() {
+                    "repeat" => &|location, patterns| {
+                        OutputPatternType::Repeat(Box::new(OutputPattern::new_sequence(
+                            location.clone(),
+                            patterns,
+                        )))
+                    },
+                    "choice" => &|_location, patterns| OutputPatternType::Choice(patterns),
+                    "unordered" => &|_location, patterns| OutputPatternType::Unordered(patterns),
+                    "sequence" => &|_location, patterns| OutputPatternType::Sequence(patterns),
+                    "optional" => &|location, patterns| {
+                        OutputPatternType::Optional(Box::new(OutputPattern::new_sequence(
+                            location.clone(),
+                            patterns,
+                        )))
+                    },
+                    "*" => &|location: &ScriptLocation, patterns| {
+                        OutputPatternType::Any(Box::new(OutputPattern::new_sequence(
+                            location.clone(),
+                            patterns,
+                        )))
+                    },
+                    _ => {
+                        return Err(ScriptError::new_with_data(
+                            ScriptErrorType::InvalidPattern,
+                            location.clone(),
+                            format!("{text}"),
+                        ));
+                    }
+                };
+
+                let new_builder = parse_script_v0_segments(&segments, grok)?;
+                let pattern = OutputPattern {
+                    pattern: factory(location, new_builder.patterns),
+                    ignore: Arc::new(new_builder.ignore),
+                    reject: Arc::new(new_builder.reject),
+                    location: location.clone(),
+                };
+                builder.patterns.push(pattern);
             }
         }
     }
-    Ok(builder)
+    Ok(())
 }
 
 fn parse_pattern_line(
@@ -880,7 +951,7 @@ mod tests {
     fn parse_pattern(pattern: &str) -> Result<OutputPattern, ScriptError> {
         let lines = ScriptLine::parse(ScriptFile::new("test.cli".into()), pattern);
         let segments = segment_script(true, &mut lines.as_slice()).unwrap();
-        let normalized = ScriptV0Segment::normalize(segments);
+        let normalized = normalize_segments(segments);
         Ok(
             parse_script_v0_segments(&normalized, &mut Grok::with_default_patterns())?
                 .patterns

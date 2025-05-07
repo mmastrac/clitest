@@ -1,0 +1,35 @@
+#!/usr/bin/env clitest --v0
+
+if true {
+    # This should print
+    $ echo "true"
+    *
+}
+
+if false {
+    # This should not print
+    $ echo "false" && exit 1
+    *
+}
+
+$ echo "1" # setting x
+%SET x
+*
+
+if x == 1 {
+    # This should print
+    $ echo "x is 1"
+    *
+}
+
+if x == 2 {
+    # This should not print
+    $ echo "x is 2" && exit 1
+    *
+}
+
+if x != 2 {
+    # This should print
+    $ echo "x is not 2"
+    *
+}

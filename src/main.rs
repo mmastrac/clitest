@@ -1,6 +1,6 @@
 use clap::{Parser, ValueEnum};
 use parser::parse_script;
-use script::{Script, ScriptFile, ScriptRunArgs};
+use script::{Script, ScriptFile, ScriptRunArgs, ScriptRunContext};
 use std::{collections::HashMap, path::PathBuf};
 use termcolor::Color;
 
@@ -133,9 +133,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             show_line_numbers: args.show_line_numbers,
         };
 
-        if args.quiet {
+        let mut context = ScriptRunContext {
+            args,
+            envs: HashMap::new(),
+        };
+
+        if context.args.quiet {
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
-            match script.script.run(args) {
+            match script.script.run(&mut context) {
                 Ok(_) => cprintln!(fg = Color::Green, "OK"),
                 Err(e) => {
                     cprintln!(fg = Color::Red, "FAILED");
@@ -148,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cprint!(fg = Color::Cyan, "{}", script.original_path);
             cprintln!(" ...");
             cprintln!();
-            match script.script.run(args) {
+            match script.script.run(&mut context) {
                 Ok(_) => {
                     cprint!(fg = Color::Cyan, "{} ", script.original_path);
                     cprintln!(fg = Color::Green, "PASSED");
