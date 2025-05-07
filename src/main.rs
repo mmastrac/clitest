@@ -1,13 +1,20 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use parser::parse_script;
 use script::{Script, ScriptFile, ScriptRunArgs};
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use termcolor::Color;
 
 mod command;
 mod parser;
 mod script;
 mod term;
+
+#[derive(Parser, Debug, Clone, Copy, ValueEnum)]
+enum DumpFormat {
+    Json,
+    Toml,
+    Yaml,
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -40,9 +47,9 @@ struct Args {
     #[arg(long)]
     runner: Option<String>,
 
-    /// Dump the script to JSON.
+    /// Dump the script to JSON or TOML.
     #[arg(long)]
-    dump: bool,
+    dump: Option<DumpFormat>,
 
     /// Version (used for shebang only)
     #[arg(long, hide = true)]
@@ -79,17 +86,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
 
-    if args.dump {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(
-                &script_files
-                    .into_iter()
-                    .map(|s| s.script)
-                    .collect::<Vec<_>>()
-            )
-            .expect("Failed to serialize script files")
-        );
+    if let Some(format) = args.dump {
+        let s = script_files
+            .into_iter()
+            .map(|s| s.script)
+            .collect::<Vec<_>>();
+        match format {
+            DumpFormat::Json => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&s).expect("Failed to serialize script files")
+                );
+            }
+            DumpFormat::Yaml => {
+                for script in s {
+                    println!(
+                        "{}",
+                        serde_yaml::to_string(&script).expect("Failed to serialize script files")
+                    );
+                }
+            }
+            DumpFormat::Toml => {
+                for script in s {
+                    println!(
+                        "{}",
+                        toml::to_string_pretty(&script).expect("Failed to serialize script files")
+                    );
+                }
+            }
+        }
         return Ok(());
     }
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::ExitStatus,
     sync::{Arc, Mutex},
@@ -209,10 +209,17 @@ pub struct ScriptRunArgs {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScriptLine {
     pub location: ScriptLocation,
-    pub text: String,
+    text: String,
 }
 
 impl ScriptLine {
+    pub fn new(file: ScriptFile, line: usize, text: impl AsRef<str>) -> Self {
+        Self {
+            location: ScriptLocation::new(file, line),
+            text: text.as_ref().to_string(),
+        }
+    }
+
     pub fn parse(file: ScriptFile, text: impl AsRef<str>) -> Vec<Self> {
         text.as_ref()
             .lines()
@@ -223,18 +230,61 @@ impl ScriptLine {
             })
             .collect()
     }
+
+    pub fn starts_with(&self, text: &str) -> bool {
+        self.text.trim().starts_with(text)
+    }
+
+    pub fn first_char(&self) -> Option<char> {
+        self.text.trim().chars().next()
+    }
+
+    pub fn text(&self) -> &str {
+        self.text.trim()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.text.trim().is_empty()
+    }
+
+    pub fn strip_prefix(&self, prefix: &str) -> Option<&str> {
+        self.text.strip_prefix(prefix)
+    }
 }
 
 #[derive(Debug, thiserror::Error, derive_more::Display)]
-#[display("{error} at {location}")]
+#[display("{error} at {location}{}", associated_data.as_deref().map_or("".to_string(), |d| format!(": {d}")))]
 pub struct ScriptError {
     pub error: ScriptErrorType,
     pub location: ScriptLocation,
+    pub associated_data: Option<String>,
 }
 
 impl ScriptError {
     pub fn new(error: ScriptErrorType, location: ScriptLocation) -> Self {
-        Self { error, location }
+        if std::env::var("PANIC_ON_ERROR").is_ok() {
+            panic!("ScriptError: {error} at {location}");
+        }
+        Self {
+            error,
+            location,
+            associated_data: None,
+        }
+    }
+
+    pub fn new_with_data(
+        error: ScriptErrorType,
+        location: ScriptLocation,
+        associated_data: String,
+    ) -> Self {
+        if std::env::var("PANIC_ON_ERROR").is_ok() {
+            panic!("ScriptError: {error} at {location}: {associated_data}");
+        }
+        Self {
+            error,
+            location,
+            associated_data: Some(associated_data),
+        }
     }
 }
 
@@ -254,6 +304,12 @@ pub enum ScriptErrorType {
     InvalidPatternDefinition,
     #[error("invalid pattern")]
     InvalidPattern,
+    #[error("invalid pattern at global level (only reject or ignore allowed here)")]
+    InvalidGlobalPattern,
+    #[error("invalid block type")]
+    InvalidBlockType,
+    #[error("unsupported command position")]
+    UnsupportedCommandPosition,
     #[error("invalid trailing pattern after *")]
     InvalidAnyPattern,
     #[error("invalid exit status")]
@@ -264,14 +320,27 @@ pub enum ScriptErrorType {
     InvalidVersion,
     #[error("missing command lines")]
     MissingCommandLines,
+    #[error(
+        "block end without matching block start, too many closing braces or braces not properly nested"
+    )]
+    InvalidBlockEnd,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone)]
 pub struct OutputPattern {
     pub location: ScriptLocation,
     pub pattern: OutputPatternType,
     pub ignore: Arc<Vec<OutputPattern>>,
     pub reject: Arc<Vec<OutputPattern>>,
+}
+
+impl Serialize for OutputPattern {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.pattern.serialize(serializer)
+    }
 }
 
 impl std::fmt::Debug for OutputPattern {
@@ -281,6 +350,19 @@ impl std::fmt::Debug for OutputPattern {
 }
 
 impl OutputPattern {
+    pub fn new_sequence(location: ScriptLocation, mut patterns: Vec<OutputPattern>) -> Self {
+        if patterns.len() == 1 {
+            patterns.remove(0)
+        } else {
+            Self {
+                pattern: OutputPatternType::Sequence(patterns),
+                ignore: Default::default(),
+                reject: Default::default(),
+                location: location.clone(),
+            }
+        }
+    }
+
     pub fn matches(
         &self,
         context: OutputMatchContext,
@@ -293,14 +375,26 @@ impl OutputPattern {
             self.pattern.matches(&self.location, context, output)
         }
     }
+
+    /// The minimum number of lines this pattern will match.
+    pub fn min_matches(&self) -> usize {
+        self.pattern.min_matches()
+    }
+
+    /// The maximum number of lines this pattern will match (or usize::MAX if unbounded).
+    pub fn max_matches(&self) -> usize {
+        self.pattern.max_matches()
+    }
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone)]
 pub enum OutputPatternType {
     /// The end of the output
     End,
+    /// Matches no lines of output, always succeeds
+    None,
     /// Any lines, followed by a pattern.
-    Any(Option<Box<OutputPattern>>),
+    Any(Box<OutputPattern>),
     /// A literal string
     Literal(String),
     /// A grok pattern
@@ -315,6 +409,101 @@ pub enum OutputPatternType {
     Choice(Vec<OutputPattern>),
     /// A pattern that matches a sequence of patterns
     Sequence(Vec<OutputPattern>),
+}
+
+impl Serialize for OutputPatternType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            OutputPatternType::Literal(literal) => {
+                serializer.serialize_str(&format!("! {literal}"))
+            }
+            OutputPatternType::Pattern(pattern) => {
+                serializer.serialize_str(&format!("? {}", pattern.pattern))
+            }
+            OutputPatternType::Repeat(pattern) => {
+                HashMap::from([("repeat", &pattern)]).serialize(serializer)
+            }
+            OutputPatternType::Optional(pattern) => {
+                HashMap::from([("optional", &pattern)]).serialize(serializer)
+            }
+            OutputPatternType::Unordered(patterns) => {
+                HashMap::from([("unordered", &patterns)]).serialize(serializer)
+            }
+            OutputPatternType::Choice(patterns) => {
+                HashMap::from([("choice", &patterns)]).serialize(serializer)
+            }
+            OutputPatternType::Sequence(patterns) => {
+                HashMap::from([("sequence", &patterns)]).serialize(serializer)
+            }
+            OutputPatternType::Any(pattern) => {
+                HashMap::from([("any", &pattern)]).serialize(serializer)
+            }
+            OutputPatternType::End => serializer.serialize_str("end"),
+            OutputPatternType::None => serializer.serialize_str("none"),
+        }
+    }
+}
+
+impl OutputPatternType {
+    /// The minimum number of lines this pattern will match.
+    pub fn min_matches(&self) -> usize {
+        match self {
+            OutputPatternType::None => 0,
+            OutputPatternType::Literal(_) => 1,
+            OutputPatternType::Pattern(_) => 1,
+            OutputPatternType::Repeat(pattern) => pattern.min_matches(),
+            OutputPatternType::Optional(_) => 0,
+            OutputPatternType::Unordered(patterns) => {
+                patterns.iter().map(|p| p.min_matches()).sum()
+            }
+            OutputPatternType::Choice(patterns) => {
+                patterns.iter().map(|p| p.min_matches()).min().unwrap_or(0)
+            }
+            OutputPatternType::Sequence(patterns) => patterns.iter().map(|p| p.min_matches()).sum(),
+            OutputPatternType::Any(pattern) => pattern.min_matches(),
+            OutputPatternType::End => 0,
+        }
+    }
+
+    /// The maximum number of lines this pattern will match (or usize::MAX if unbounded).
+    pub fn max_matches(&self) -> usize {
+        fn saturating_iter_sum<I>(iter: I) -> usize
+        where
+            I: IntoIterator<Item = usize>,
+        {
+            iter.into_iter()
+                .reduce(|n, i| n.saturating_add(i))
+                .unwrap_or(0)
+        }
+
+        match self {
+            OutputPatternType::None => 0,
+            OutputPatternType::Literal(_) => 1,
+            OutputPatternType::Pattern(_) => 1,
+            OutputPatternType::Repeat(pattern) => {
+                if pattern.max_matches() == 0 {
+                    0
+                } else {
+                    usize::MAX
+                }
+            }
+            OutputPatternType::Optional(pattern) => pattern.max_matches(),
+            OutputPatternType::Unordered(patterns) => {
+                saturating_iter_sum(patterns.iter().map(|p| p.max_matches()))
+            }
+            OutputPatternType::Choice(patterns) => {
+                patterns.iter().map(|p| p.max_matches()).max().unwrap_or(0)
+            }
+            OutputPatternType::Sequence(patterns) => {
+                saturating_iter_sum(patterns.iter().map(|p| p.max_matches()))
+            }
+            OutputPatternType::Any(_) => usize::MAX,
+            OutputPatternType::End => 0,
+        }
+    }
 }
 
 impl Default for OutputPatternType {
@@ -335,15 +524,16 @@ impl std::fmt::Debug for OutputPatternType {
             OutputPatternType::Sequence(patterns) => write!(f, "Sequence({patterns:?})"),
             OutputPatternType::Any(until) => write!(f, "Any({until:?})"),
             OutputPatternType::End => write!(f, "End"),
+            OutputPatternType::None => write!(f, "None"),
         }
     }
 }
 
 #[derive(Serialize, derive_more::Debug)]
+#[debug("/{pattern:?}/")]
 pub struct GrokPattern {
     pattern: String,
     #[serde(skip)]
-    #[debug(skip)]
     grok: grok::Pattern,
 }
 
@@ -475,6 +665,7 @@ impl OutputPatternType {
     ) -> Result<Lines, OutputPatternMatchFailure> {
         context.trace(&format!("matching {:?}", self));
         match self {
+            OutputPatternType::None => Ok(output),
             OutputPatternType::Literal(literal) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
@@ -608,32 +799,21 @@ impl OutputPatternType {
                 })
             }
             OutputPatternType::Any(until) => {
-                if let Some(until) = until {
-                    loop {
-                        match until.matches(context.descend(), output.clone()) {
-                            Ok(v) => {
-                                output = v;
-                                break Ok(output);
-                            }
-                            Err(e) => {
-                                // Eat one line and try again
-                                let (line, next) = output.next(context.clone())?;
-                                if line.is_some() {
-                                    output = next;
-                                    continue;
-                                } else {
-                                    break Err(e);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    loop {
-                        let (line, next) = output.next(context.clone())?;
-                        if line.is_some() {
-                            output = next;
-                        } else {
+                loop {
+                    match until.matches(context.descend(), output.clone()) {
+                        Ok(v) => {
+                            output = v;
                             break Ok(output);
+                        }
+                        Err(e) => {
+                            // Eat one line and try again
+                            let (line, next) = output.next(context.clone())?;
+                            if line.is_some() {
+                                output = next;
+                                continue;
+                            } else {
+                                break Err(e);
+                            }
                         }
                     }
                 }
@@ -742,6 +922,7 @@ pub enum CommandExit {
     Failure(i32),
     Any,
 }
+
 impl CommandExit {
     pub fn matches(&self, status: ExitStatus) -> bool {
         match self {
@@ -750,20 +931,48 @@ impl CommandExit {
             CommandExit::Any => true,
         }
     }
+
+    pub fn is_success(&self) -> bool {
+        matches!(self, CommandExit::Success)
+    }
+}
+
+pub enum ScriptBlock {
+    Command(ScriptCommand),
+    If(IfCondition, Vec<ScriptBlock>),
+    For(ForCondition, Vec<ScriptBlock>),
+}
+
+pub enum IfCondition {
+    True,
+    False,
+    TargetEq(bool, String, String),
+    EnvEq(bool, String, String),
+}
+
+pub enum ForCondition {
+    Env(String, Vec<String>),
+}
+
+fn is_bool_false(b: &bool) -> bool {
+    !b
 }
 
 #[derive(Debug, Serialize)]
 pub struct ScriptCommand {
     pub command: CommandLine,
     pub pattern: OutputPattern,
+    #[serde(skip_serializing_if = "CommandExit::is_success")]
     pub exit: CommandExit,
+    #[serde(skip_serializing_if = "is_bool_false")]
     pub expect_failure: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub set_var: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::v0::{parse_output_pattern, parse_script};
+    use crate::parser::v0::parse_script;
 
     use super::*;
     use std::error::Error;
@@ -771,7 +980,7 @@ mod tests {
     #[test]
     fn test_script() -> Result<(), Box<dyn Error>> {
         let script = r#"
-#pattern VERSION \d+\.\d+\.\d+
+pattern VERSION \d+\.\d+\.\d+
 
 $ something --version || echo 1
 ? Something %{VERSION}
@@ -807,29 +1016,5 @@ $ cmd &
             })
         ));
         Ok(())
-    }
-
-    #[test]
-    fn test_parse_pattern() {
-        let pattern = r#"
-        repeat {
-            choice {
-    ? pattern1 %{DATA}
-    ? pattern2 %{DATA}
-    ? pattern3 %{DATA}
-            }
-        }
-        "#;
-        let mut grok = Grok::with_default_patterns();
-        let file = ScriptFile::new("test.cli".into());
-        let pattern = parse_output_pattern(
-            ScriptLocation::new(file.clone(), 0),
-            &ScriptLine::parse(file.clone(), pattern),
-            &[],
-            &[],
-            &mut grok,
-        )
-        .unwrap();
-        eprintln!("{pattern:?}");
     }
 }

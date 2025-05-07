@@ -15,15 +15,23 @@ use crate::{
     script::{Lines, ScriptLocation},
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+#[serde(transparent)]
 pub struct CommandLine {
     pub command: String,
+    #[serde(skip)]
     pub location: ScriptLocation,
+    #[serde(skip)]
+    pub line_count: usize,
 }
 
 impl CommandLine {
-    pub fn new(command: String, location: ScriptLocation) -> Self {
-        Self { command, location }
+    pub fn new(command: String, location: ScriptLocation, line_count: usize) -> Self {
+        Self {
+            command,
+            location,
+            line_count,
+        }
     }
 
     pub fn run(

@@ -1,0 +1,13 @@
+#!/usr/bin/env clitest --v0
+
+if true {
+    # This should print
+    $ echo "true"
+    *
+}
+
+if false {
+    # This should not print
+    $ echo "false" && exit 1
+    *
+}

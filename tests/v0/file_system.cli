@@ -12,7 +12,7 @@
 #   - choice { ... }
 #   - unordered { ... }
 
-#pattern FILENAME [\w\-\.]+
+pattern FILENAME [\w\-\.]+
 
 $ rm -rf /tmp/testing-dir || echo "no dir to remove"
 $ mkdir /tmp/testing-dir

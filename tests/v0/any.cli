@@ -31,6 +31,13 @@ $ echo "a\nb\nc"
 ! d
 *
 
+$ echo "a\nb\nc\nd\ne"
+! a
+! b
+*
+! d
+! e
+
 $ echo "start\n1\n2\nend\nstart\n1\n2\nend"
 repeat {
     ! start
