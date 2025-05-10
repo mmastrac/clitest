@@ -727,7 +727,7 @@ impl OutputPatternType {
             OutputPatternType::Literal(literal) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
-                    if &line.text == literal {
+                    if &line.text.trim_end() == literal {
                         context.trace(&format!("literal match: {:?} == {literal:?}", line.text));
                         Ok(next)
                     } else {

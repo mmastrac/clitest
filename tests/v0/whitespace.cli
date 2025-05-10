@@ -1,0 +1,22 @@
+#!/usr/bin/env clitest --v0
+
+$ echo "  X  "
+!   X
+
+$ echo "  X  "
+?   X
+
+$ echo "  X  "
+? ^  X  $
+
+$ echo "   X   "
+%EXPECT_FAILURE
+!   X
+
+$ echo "   X   "
+%EXPECT_FAILURE
+?   X
+
+$ echo "   X   "
+%EXPECT_FAILURE
+? ^  X  $

@@ -931,7 +931,8 @@ fn parse_pattern_line(
         });
     }
 
-    let text = text.trim();
+    let mut text = text.trim_end();
+    text = text.strip_prefix(' ').unwrap_or(text);
 
     if line_start == '!' {
         if !text.contains("%") {
@@ -957,7 +958,12 @@ fn parse_pattern_line(
             location,
         })
     } else if line_start == '?' {
-        let pattern = GrokPattern::compile(grok, text, false).map_err(|e| {
+        let text = if text.ends_with('$') {
+            format!(r#"^{text}"#)
+        } else {
+            format!(r#"^{text}\s*$"#)
+        };
+        let pattern = GrokPattern::compile(grok, &text, false).map_err(|e| {
             ScriptError::new_with_data(
                 ScriptErrorType::InvalidPattern,
                 location.clone(),
