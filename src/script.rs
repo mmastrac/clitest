@@ -280,6 +280,10 @@ impl ScriptLine {
         self.text.trim()
     }
 
+    pub fn text_untrimmed(&self) -> &str {
+        &self.text
+    }
+
     pub fn is_empty(&self) -> bool {
         self.text.trim().is_empty()
     }

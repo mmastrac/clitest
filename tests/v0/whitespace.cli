@@ -9,6 +9,22 @@ $ echo "  X  "
 $ echo "  X  "
 ? ^  X  $
 
+$ echo "  X  "
+!!!
+  X
+!!!
+
+$ echo "  X  "
+???
+  X
+???
+
+
+$ echo "  X  "
+???
+^  X  $
+???
+
 $ echo "   X   "
 %EXPECT_FAILURE
 !   X

@@ -747,7 +747,7 @@ fn parse_script_v0_segment(
                             builder.patterns.push(parse_pattern_line(
                                 grok,
                                 line.location.clone(),
-                                &line.text(),
+                                &line.text_untrimmed(),
                                 '!',
                             )?);
                         }
@@ -761,16 +761,23 @@ fn parse_script_v0_segment(
                             builder.patterns.push(parse_pattern_line(
                                 grok,
                                 line.location.clone(),
-                                &line.text(),
+                                &line.text_untrimmed(),
                                 '?',
                             )?);
                         }
                     }
-                } else if line.starts_with("!") || line.starts_with("?") {
+                } else if line.text() == "!" || line.text() == "?" {
                     builder.patterns.push(parse_pattern_line(
                         grok,
                         line.location.clone(),
-                        &line.text()[1..],
+                        "",
+                        line.first_char().unwrap(),
+                    )?);
+                } else if line.starts_with("! ") || line.starts_with("? ") {
+                    builder.patterns.push(parse_pattern_line(
+                        grok,
+                        line.location.clone(),
+                        &line.text()[2..],
                         line.first_char().unwrap(),
                     )?);
                 } else if let Some(pattern) = line.strip_prefix("pattern ") {
@@ -931,8 +938,7 @@ fn parse_pattern_line(
         });
     }
 
-    let mut text = text.trim_end();
-    text = text.strip_prefix(' ').unwrap_or(text);
+    let text = text.trim_end();
 
     if line_start == '!' {
         if !text.contains("%") {
