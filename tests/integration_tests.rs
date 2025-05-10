@@ -31,10 +31,7 @@ fn main() {
             runner: None,
             show_line_numbers: true,
         };
-        let mut context = ScriptRunContext {
-            args,
-            envs: HashMap::new(),
-        };
+        let mut context = ScriptRunContext::new(args);
         if let Err(e) = script.run(&mut context) {
             cprintln!(fg = Color::Red, "❌ FAIL");
             failed += 1;

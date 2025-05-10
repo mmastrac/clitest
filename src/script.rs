@@ -197,6 +197,7 @@ pub struct Script {
     pub grok: Grok,
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct ScriptRunArgs {
     pub delay_steps: Option<u64>,
     pub ignore_exit_codes: bool,
@@ -206,9 +207,40 @@ pub struct ScriptRunArgs {
     pub runner: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
-    pub envs: HashMap<String, String>,
+    envs: HashMap<String, String>,
+}
+
+impl ScriptRunContext {
+    pub fn new(args: ScriptRunArgs) -> Self {
+        let mut envs = HashMap::new();
+
+        macro_rules! target {
+            ($env:ident, $var:ident, [$($vals:expr),*]) => {
+                $(
+                if cfg!($var = $vals) {
+                    envs.insert(stringify!($env).to_string(), $vals.to_string());
+                }
+                )*
+            };
+        }
+
+        target!(
+            TARGET_OS,
+            target_os,
+            ["windows", "linux", "macos", "ios", "android"]
+        );
+        target!(TARGET_FAMILY, target_family, ["windows", "unix", "wasm"]);
+        target!(
+            TARGET_ARCH,
+            target_arch,
+            ["x86", "x86_64", "arm", "aarch64"]
+        );
+
+        Self { args, envs }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -416,6 +448,8 @@ pub enum OutputPatternType {
     Choice(Vec<OutputPattern>),
     /// A pattern that matches a sequence of patterns
     Sequence(Vec<OutputPattern>),
+    /// A pattern that matches a condition
+    If(IfCondition, Box<OutputPattern>),
 }
 
 impl Serialize for OutputPatternType {
@@ -448,6 +482,14 @@ impl Serialize for OutputPatternType {
             OutputPatternType::Any(pattern) => {
                 HashMap::from([("any", &pattern)]).serialize(serializer)
             }
+            OutputPatternType::If(condition, pattern) => {
+                #[derive(Serialize)]
+                struct If<'a> {
+                    condition: &'a IfCondition,
+                    pattern: &'a OutputPattern,
+                }
+                If { condition, pattern }.serialize(serializer)
+            }
             OutputPatternType::End => serializer.serialize_str("end"),
             OutputPatternType::None => serializer.serialize_str("none"),
         }
@@ -471,6 +513,7 @@ impl OutputPatternType {
             }
             OutputPatternType::Sequence(patterns) => patterns.iter().map(|p| p.min_matches()).sum(),
             OutputPatternType::Any(pattern) => pattern.min_matches(),
+            OutputPatternType::If(_, pattern) => pattern.min_matches(),
             OutputPatternType::End => 0,
         }
     }
@@ -508,6 +551,7 @@ impl OutputPatternType {
                 saturating_iter_sum(patterns.iter().map(|p| p.max_matches()))
             }
             OutputPatternType::Any(_) => usize::MAX,
+            OutputPatternType::If(_, pattern) => pattern.max_matches(),
             OutputPatternType::End => 0,
         }
     }
@@ -530,6 +574,9 @@ impl std::fmt::Debug for OutputPatternType {
             OutputPatternType::Choice(patterns) => write!(f, "Choice({patterns:?})"),
             OutputPatternType::Sequence(patterns) => write!(f, "Sequence({patterns:?})"),
             OutputPatternType::Any(until) => write!(f, "Any({until:?})"),
+            OutputPatternType::If(condition, pattern) => {
+                write!(f, "If({condition:?}, {pattern:?})")
+            }
             OutputPatternType::End => write!(f, "End"),
             OutputPatternType::None => write!(f, "None"),
         }
@@ -617,18 +664,20 @@ pub struct OutputPatternMatchFailure {
 }
 
 #[derive(Debug, Clone)]
-pub struct OutputMatchContext {
+pub struct OutputMatchContext<'s> {
     depth: usize,
     trace: Arc<Mutex<Vec<String>>>,
     ignore: bool,
+    script_context: &'s ScriptRunContext,
 }
 
-impl OutputMatchContext {
-    pub fn new() -> Self {
+impl<'s> OutputMatchContext<'s> {
+    pub fn new(script_context: &'s ScriptRunContext) -> Self {
         Self {
             depth: 0,
             trace: Default::default(),
             ignore: false,
+            script_context,
         }
     }
 
@@ -637,6 +686,7 @@ impl OutputMatchContext {
             depth: self.depth + 1,
             trace: self.trace.clone(),
             ignore: self.ignore,
+            script_context: self.script_context,
         }
     }
 
@@ -645,6 +695,7 @@ impl OutputMatchContext {
             depth: self.depth,
             trace: self.trace.clone(),
             ignore: true,
+            script_context: self.script_context,
         }
     }
 
@@ -825,6 +876,15 @@ impl OutputPatternType {
                     }
                 }
             }
+            OutputPatternType::If(condition, pattern) => {
+                if condition.matches(context.script_context) {
+                    context.trace(&format!("if match: {:?}", condition));
+                    pattern.matches(context.clone(), output.clone())
+                } else {
+                    context.trace(&format!("if FAILED match: {:?}", condition));
+                    Ok(output)
+                }
+            }
             OutputPatternType::End => {
                 let (line, next) = output.next(context)?;
                 if let Some(line) = line {
@@ -883,19 +943,10 @@ impl ScriptBlock {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
         match self {
             ScriptBlock::Command(command) => command.run(context)?,
-            ScriptBlock::If(IfCondition::True, blocks) => {
-                for block in blocks {
-                    block.run(context)?;
-                }
-            }
-            ScriptBlock::If(IfCondition::False, _) => {}
-            ScriptBlock::If(IfCondition::EnvEq(negated, target, expected_value), blocks) => {
-                if let Some(value) = context.envs.get(target) {
-                    let success = (value == expected_value) ^ negated;
-                    if success {
-                        for block in blocks {
-                            block.run(context)?;
-                        }
+            ScriptBlock::If(condition, blocks) => {
+                if condition.matches(context) {
+                    for block in blocks {
+                        block.run(context)?;
                     }
                 }
             }
@@ -936,12 +987,28 @@ impl Serialize for ScriptBlock {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum IfCondition {
     True,
     False,
-    TargetEq(bool, String, String),
     EnvEq(bool, String, String),
+}
+
+impl IfCondition {
+    pub fn matches(&self, context: &ScriptRunContext) -> bool {
+        match self {
+            IfCondition::True => true,
+            IfCondition::False => false,
+            IfCondition::EnvEq(negated, name, expected) => {
+                let value = context
+                    .envs
+                    .get(name)
+                    .map(|s| s.as_str())
+                    .unwrap_or_default();
+                (value == expected) ^ negated
+            }
+        }
+    }
 }
 
 impl Serialize for IfCondition {
@@ -952,12 +1019,6 @@ impl Serialize for IfCondition {
         match self {
             IfCondition::True => "true".serialize(serializer),
             IfCondition::False => "false".serialize(serializer),
-            IfCondition::TargetEq(negated, target, value) => {
-                let mut ser = serializer.serialize_map(Some(2))?;
-                ser.serialize_entry("target", target)?;
-                ser.serialize_entry("value", value)?;
-                ser.end()
-            }
             IfCondition::EnvEq(negated, name, value) => {
                 let mut ser = serializer.serialize_map(Some(2))?;
                 ser.serialize_entry("env", name)?;
@@ -1032,7 +1093,7 @@ impl ScriptCommand {
         if !args.quiet {
             cprintln_rule!();
         }
-        let context = OutputMatchContext::new();
+        let context = OutputMatchContext::new(context);
         match self.pattern.matches(context.clone(), output) {
             Ok(_) => {
                 if self.expect_failure {

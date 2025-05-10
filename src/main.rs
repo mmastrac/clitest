@@ -133,10 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             show_line_numbers: args.show_line_numbers,
         };
 
-        let mut context = ScriptRunContext {
-            args,
-            envs: HashMap::new(),
-        };
+        let mut context = ScriptRunContext::new(args);
 
         if context.args.quiet {
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);

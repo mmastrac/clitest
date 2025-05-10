@@ -1,0 +1,12 @@
+#!/usr/bin/env clitest --v0
+
+$ echo $TARGET_OS
+*
+
+$ uname -a
+if TARGET_OS == "linux" {
+    ! Linux %{GREEDYDATA} GNU/Linux
+}
+if TARGET_OS == "macos" {
+    ! Darwin %{GREEDYDATA}
+}

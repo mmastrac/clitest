@@ -111,7 +111,7 @@ impl std::fmt::Debug for ScriptV0Block {
 /// the script.
 enum ScriptV0Segment {
     Block(ScriptV0Block),
-    SubBlock(ScriptLocation, String, String, Vec<ScriptV0Segment>),
+    SubBlock(ScriptLocation, String, Vec<String>, Vec<ScriptV0Segment>),
 }
 
 impl std::fmt::Debug for ScriptV0Segment {
@@ -322,10 +322,33 @@ fn segment_script(
                     line.location.clone(),
                 ));
             }
+
+            let args = shellish_parse::parse(&args, shellish_parse::ParseOptions::default())
+                .map_err(|_| {
+                    ScriptError::new_with_data(
+                        ScriptErrorType::InvalidBlockType,
+                        line.location.clone(),
+                        format!("{block_type} {args}"),
+                    )
+                })?;
+
+            // Strip quotes from args. If an arg starts with " or ', remove the
+            // same quote from the end.
+            let args = args
+                .into_iter()
+                .map(|arg| {
+                    if arg.starts_with('"') || arg.starts_with('\'') {
+                        arg[1..arg.len() - 1].to_string()
+                    } else {
+                        arg
+                    }
+                })
+                .collect();
+
             segments.push(ScriptV0Segment::SubBlock(
                 line.location.clone(),
                 block_type.to_string(),
-                args.to_string(),
+                args,
                 segment_script(false, &mut rest)?,
             ));
             lines = rest.into_iter();
@@ -451,19 +474,15 @@ fn normalize_segments(segments: Vec<ScriptV0Segment>) -> Vec<ScriptV0Segment> {
         if let ScriptV0Segment::Block(block) = &mut new_segments[i] {
             if block.block_type.is_any() {
                 let location = block.location.clone();
-                new_segments[i] = ScriptV0Segment::SubBlock(
-                    location.clone(),
-                    "*".to_string(),
-                    "".to_string(),
-                    vec![],
-                );
+                new_segments[i] =
+                    ScriptV0Segment::SubBlock(location.clone(), "*".to_string(), vec![], vec![]);
 
                 if i + 1 < new_segments.len() {
                     if let Some(first) = new_segments[i + 1].split_first() {
                         new_segments[i] = ScriptV0Segment::SubBlock(
                             location.clone(),
                             "*".to_string(),
-                            "".to_string(),
+                            vec![],
                             vec![first],
                         );
                     }
@@ -585,37 +604,13 @@ fn parse_normalized_script_v0_commands(
                 global_reject,
             )?;
 
-            let text = format!("{} {}", block_type, args).trim().to_owned();
-            let args = shellish_parse::parse(&args, ParseOptions::default()).map_err(|_| {
-                ScriptError::new_with_data(
-                    ScriptErrorType::InvalidBlockType,
-                    command.location().clone(),
-                    text.clone(),
-                )
-            })?;
+            let text = format!("{} {}", block_type, args.join(" "))
+                .trim()
+                .to_owned();
 
             if block_type == "if" {
-                if args.len() == 1 && args[0] == "true" {
-                    commands.push(ScriptBlock::If(IfCondition::True, blocks));
-                } else if args.len() == 1 && args[0] == "false" {
-                    commands.push(ScriptBlock::If(IfCondition::False, blocks));
-                } else if args.len() == 3 && args[1] == "==" {
-                    commands.push(ScriptBlock::If(
-                        IfCondition::EnvEq(false, args[0].clone(), args[2].clone()),
-                        blocks,
-                    ));
-                } else if args.len() == 3 && args[1] == "!=" {
-                    commands.push(ScriptBlock::If(
-                        IfCondition::EnvEq(true, args[0].clone(), args[2].clone()),
-                        blocks,
-                    ));
-                } else {
-                    return Err(ScriptError::new_with_data(
-                        ScriptErrorType::InvalidBlockType,
-                        command.location().clone(),
-                        text,
-                    ));
-                }
+                let condition = parse_if_condition(command.location().clone(), &text, &args)?;
+                commands.push(ScriptBlock::If(condition, blocks));
             } else if block_type == "for" {
                 if args.len() >= 3 && args[1] == "in" {
                     commands.push(ScriptBlock::For(
@@ -811,11 +806,11 @@ fn parse_script_v0_segment(
             }
         }
         ScriptV0Segment::SubBlock(location, text, args, segments) => {
-            if !args.is_empty() {
+            if text != "if" && !args.is_empty() {
                 return Err(ScriptError::new_with_data(
                     ScriptErrorType::InvalidPattern,
                     location.clone(),
-                    format!("{text} {args}"),
+                    format!("{text} {args:?}"),
                 ));
             }
             if text == "reject" {
@@ -836,6 +831,22 @@ fn parse_script_v0_segment(
                     ));
                 }
                 builder.ignore.extend(next.patterns);
+            } else if text == "if" {
+                let condition = parse_if_condition(location.clone(), &text, &args)?;
+                let new_builder = parse_script_v0_segments(&segments, grok)?;
+                let pattern = OutputPattern {
+                    pattern: OutputPatternType::If(
+                        condition,
+                        Box::new(OutputPattern::new_sequence(
+                            location.clone(),
+                            new_builder.patterns,
+                        )),
+                    ),
+                    ignore: Arc::new(new_builder.ignore),
+                    reject: Arc::new(new_builder.reject),
+                    location: location.clone(),
+                };
+                builder.patterns.push(pattern);
             } else {
                 let factory: &dyn Fn(&ScriptLocation, Vec<OutputPattern>) -> OutputPatternType;
                 factory = match text.as_str() {
@@ -881,6 +892,28 @@ fn parse_script_v0_segment(
         }
     }
     Ok(())
+}
+
+fn parse_if_condition(
+    location: ScriptLocation,
+    text: &str,
+    args: &[String],
+) -> Result<IfCondition, ScriptError> {
+    if args.len() == 1 && args[0] == "true" {
+        Ok(IfCondition::True)
+    } else if args.len() == 1 && args[0] == "false" {
+        Ok(IfCondition::False)
+    } else if args.len() == 3 && args[1] == "==" {
+        Ok(IfCondition::EnvEq(false, args[0].clone(), args[2].clone()))
+    } else if args.len() == 3 && args[1] == "!=" {
+        Ok(IfCondition::EnvEq(true, args[0].clone(), args[2].clone()))
+    } else {
+        return Err(ScriptError::new_with_data(
+            ScriptErrorType::InvalidIfCondition,
+            location.clone(),
+            format!("{text} {args:?}"),
+        ));
+    }
 }
 
 fn parse_pattern_line(
@@ -944,7 +977,7 @@ fn parse_pattern_line(
 
 #[cfg(test)]
 mod tests {
-    use crate::script::{Lines, OutputMatchContext};
+    use crate::script::{Lines, OutputMatchContext, ScriptRunContext};
 
     use super::*;
 
@@ -973,7 +1006,8 @@ mod tests {
         patterns.push(parse_pattern("! a\n! b\n! c\n").unwrap());
         patterns.push(parse_pattern("!!!\na\nb\nc\n!!!\n").unwrap());
 
-        let context = OutputMatchContext::new();
+        let context = ScriptRunContext::default();
+        let context = OutputMatchContext::new(&context);
         let output = parse_lines("a\nb\nc\n").unwrap();
 
         for pattern in patterns {
