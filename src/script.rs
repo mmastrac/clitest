@@ -517,7 +517,7 @@ impl OutputPatternType {
             }
             OutputPatternType::Sequence(patterns) => patterns.iter().map(|p| p.min_matches()).sum(),
             OutputPatternType::Any(pattern) => pattern.min_matches(),
-            OutputPatternType::If(_, pattern) => pattern.min_matches(),
+            OutputPatternType::If(_, _) => 0,
             OutputPatternType::End => 0,
         }
     }
