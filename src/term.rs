@@ -38,10 +38,10 @@ pub fn ensure_panic_hook() {
     });
 }
 
-/// Estimate the width of the terminal. Falls back to 60 if the width cannot be
+/// Estimate the width of the terminal. Falls back to 79 if the width cannot be
 /// determined.
 pub fn term_width() -> usize {
-    termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(60)
+    termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(79)
 }
 
 pub fn compute_rule_string(message: &str, max_width: usize) -> String {
@@ -169,36 +169,43 @@ macro_rules! cprintln_rule {
         use ::unicode_width::UnicodeWidthStr;
 
         let message = format!($literal $($arg)*);
-        let max_width = $crate::term::term_width() - 1 - 6;
-        let message = $crate::term::compute_rule_string(&message, max_width);
-        let message_width = message.width();
+        const UNTOUCHABLE: usize = 1 + 8; // --[ ... ]--
 
-        let is_utf8 = *$crate::term::IS_UTF8;
+        // If there's not enough space, just skip printing the extra rule overlay.
+        if $crate::term::term_width() > UNTOUCHABLE {
+            let max_width = $crate::term::term_width() - UNTOUCHABLE;
+            let message = $crate::term::compute_rule_string(&message, max_width);
+            let message_width = message.width();
 
-        if is_utf8 {
-            $crate::cprint!(dimmed = true, "{:─>count$}", "", count = max_width - message_width);
-        } else {
-            $crate::cprint!(dimmed = true, "{:->count$}", "", count = max_width - message_width);
-        }
+            let is_utf8 = *$crate::term::IS_UTF8;
 
-        if is_utf8 {
-            $crate::cprint!(dimmed = true, "┨ ");
-        } else {
-            $crate::cprint!(dimmed = true, "[ ");
-        }
-        $crate::cprint!($(fg = $fg,)? $(bg = $bg,)? $(bold = $bold,)? $(dimmed = $dimmed,)? "{message}");
-        if is_utf8 {
-            $crate::cprint!(dimmed = true, " ┣");
-        } else {
-            $crate::cprint!(dimmed = true, " ]");
-        }
+            if is_utf8 {
+                $crate::cprint!(dimmed = true, "{:─>count$}", "", count = max_width - message_width);
+            } else {
+                $crate::cprint!(dimmed = true, "{:->count$}", "", count = max_width - message_width);
+            }
 
-        if is_utf8 {
-            $crate::cprint!(dimmed = true, "━━");
+            if is_utf8 {
+                $crate::cprint!(dimmed = true, "┨ ");
+            } else {
+                $crate::cprint!(dimmed = true, "[ ");
+            }
+            $crate::cprint!($(fg = $fg,)? $(bg = $bg,)? $(bold = $bold,)? $(dimmed = $dimmed,)? "{message}");
+            if is_utf8 {
+                $crate::cprint!(dimmed = true, " ┣");
+            } else {
+                $crate::cprint!(dimmed = true, " ]");
+            }
+
+            if is_utf8 {
+                $crate::cprint!(dimmed = true, "━━");
+            } else {
+                $crate::cprint!(dimmed = true, "--");
+            }
+            $crate::cprintln!();
         } else {
-            $crate::cprint!(dimmed = true, "--");
+            $crate::cprintln_rule!();
         }
-        $crate::cprintln!();
     }
 }
 
