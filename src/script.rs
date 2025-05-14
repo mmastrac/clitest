@@ -2,13 +2,18 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::ExitStatus,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        mpsc::{Receiver, Sender, TryRecvError},
+    },
+    time::Duration,
 };
 
 use grok::Grok;
 use serde::{Serialize, ser::SerializeMap};
+use termcolor::Color;
 
-use crate::{command::CommandLine, cprintln_rule};
+use crate::{command::CommandLine, cprint, cprintln, cprintln_rule};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -23,6 +28,15 @@ pub struct Lines {
     ignored_patterns: Vec<Arc<Vec<OutputPattern>>>,
     negative_disabled: bool,
     rejected_patterns: Vec<Arc<Vec<OutputPattern>>>,
+}
+
+impl<'s> IntoIterator for &'s Lines {
+    type Item = &'s String;
+    type IntoIter = std::slice::Iter<'s, String>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.lines.iter()
+    }
 }
 
 impl std::fmt::Display for Lines {
@@ -207,10 +221,117 @@ pub struct ScriptRunArgs {
     pub runner: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
     envs: HashMap<String, String>,
+    background: bool,
+    #[debug(skip)]
+    kill: ScriptKillReceiver,
+    #[debug(skip)]
+    kill_sender: ScriptKillSender,
+}
+
+impl Default for ScriptRunContext {
+    fn default() -> Self {
+        let (kill_sender, kill_receiver) = std::sync::mpsc::channel();
+        Self {
+            args: ScriptRunArgs::default(),
+            envs: HashMap::new(),
+            background: false,
+            kill: ScriptKillReceiver::new(kill_receiver),
+            kill_sender: ScriptKillSender::new(kill_sender),
+        }
+    }
+}
+
+impl ScriptRunContext {
+    pub fn new_background(&self) -> Self {
+        let (kill_sender, kill_receiver) = std::sync::mpsc::channel();
+        Self {
+            args: self.args.clone(),
+            envs: self.envs.clone(),
+            background: true,
+            kill: ScriptKillReceiver::new(kill_receiver),
+            kill_sender: ScriptKillSender::new(kill_sender),
+        }
+    }
+}
+
+pub struct ScriptKillReceiver {
+    kill_receiver: Mutex<Receiver<()>>,
+}
+
+impl ScriptKillReceiver {
+    pub fn new(kill_receiver: Receiver<()>) -> Self {
+        Self {
+            kill_receiver: Mutex::new(kill_receiver),
+        }
+    }
+
+    pub fn is_killed(&self) -> bool {
+        matches!(self.kill_receiver.try_lock().unwrap().try_recv(), Ok(()))
+    }
+
+    pub fn run_with<T>(&self, kill: impl FnOnce() + Send, wait: impl FnOnce() -> T) -> T {
+        std::thread::scope(|s| {
+            let (tx, rx) = std::sync::mpsc::channel::<()>();
+            let t = s.spawn(move || {
+                while matches!(rx.try_recv(), Err(TryRecvError::Empty)) {
+                    if let Ok(_) = self.kill_receiver.try_lock().unwrap().try_recv() {
+                        kill();
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            });
+            let res = wait();
+            drop(tx);
+            t.join().unwrap();
+            res
+        })
+    }
+
+    pub fn run_cmd(&self, output: std::process::Child) -> std::io::Result<ExitStatus> {
+        let output = Mutex::new(output);
+        self.run_with(
+            || {
+                #[cfg(unix)]
+                {
+                    use signal_child::Signalable;
+                    _ = output.lock().unwrap().interrupt();
+                    std::thread::sleep(Duration::from_millis(10));
+                    _ = output.lock().unwrap().kill();
+                }
+                #[cfg(not(unix))]
+                {
+                    _ = output.lock().unwrap().kill();
+                }
+            },
+            || loop {
+                let res = output.lock().unwrap().try_wait()?;
+                if let Some(status) = res {
+                    return Ok::<_, std::io::Error>(status);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            },
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct ScriptKillSender {
+    kill_sender: Sender<()>,
+}
+
+impl ScriptKillSender {
+    pub fn new(kill_sender: Sender<()>) -> Self {
+        Self { kill_sender }
+    }
+
+    pub fn kill(&self) {
+        _ = self.kill_sender.send(());
+    }
 }
 
 impl ScriptRunContext {
@@ -239,7 +360,15 @@ impl ScriptRunContext {
             ["x86", "x86_64", "arm", "aarch64"]
         );
 
-        Self { args, envs }
+        let (kill_sender, kill_receiver) = std::sync::mpsc::channel();
+
+        Self {
+            args,
+            envs,
+            background: false,
+            kill: ScriptKillReceiver::new(kill_receiver),
+            kill_sender: ScriptKillSender::new(kill_sender),
+        }
     }
 }
 
@@ -657,9 +786,11 @@ pub enum ScriptRunError {
     ExpectedFailure,
     #[error("{0}")]
     IO(#[from] std::io::Error),
+    #[error("killed")]
+    Killed,
 }
 
-#[derive(Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
+#[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
 #[display("pattern {pattern_type} at line {location} does not match output line {:?}", output_line.as_ref().map(|l| l.text.clone()).unwrap_or("<eof>".to_string()))]
 pub struct OutputPatternMatchFailure {
     pub location: ScriptLocation,
@@ -907,9 +1038,7 @@ impl OutputPatternType {
 
 impl Script {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
-        for command in &self.commands {
-            command.run(context)?;
-        }
+        ScriptBlock::run_blocks(context, &self.commands)?;
         Ok(())
     }
 }
@@ -939,32 +1068,99 @@ impl CommandExit {
 #[derive(Debug)]
 pub enum ScriptBlock {
     Command(ScriptCommand),
+    Background(Vec<ScriptBlock>),
+    Defer(Vec<ScriptBlock>),
     If(IfCondition, Vec<ScriptBlock>),
     For(ForCondition, Vec<ScriptBlock>),
 }
 
 impl ScriptBlock {
-    pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
+    pub fn run_blocks(
+        context: &mut ScriptRunContext,
+        blocks: &[ScriptBlock],
+    ) -> Result<Vec<ScriptResult>, ScriptRunError> {
+        let mut results = Vec::new();
+        std::thread::scope(|s| {
+            let mut defer_blocks = Vec::new();
+            let mut background = Vec::new();
+            for block in blocks {
+                if context.kill.is_killed() {
+                    return Err(ScriptRunError::Killed);
+                }
+                match block {
+                    ScriptBlock::Background(blocks) => {
+                        for block in blocks {
+                            let mut context = context.new_background();
+                            context.args.quiet = true;
+                            let kill_sender = context.kill_sender.clone();
+                            let handle = s.spawn(move || block.run(&mut context));
+                            background.push((handle, kill_sender));
+                        }
+                    }
+                    ScriptBlock::Defer(blocks) => {
+                        defer_blocks.extend(blocks);
+                    }
+                    _ => results.extend(block.run(context)?),
+                }
+            }
+            for (handle, kill_sender) in background {
+                kill_sender.kill();
+                let results = handle.join().unwrap()?;
+                for result in results {
+                    if !context.args.quiet {
+                        cprint!(dimmed = true, "(background) ");
+                        cprintln!(fg = Color::Green, "{}", result.command.command);
+                        cprintln_rule!(fg = Color::Cyan, "{}", result.command.location);
+                        for line in &result.output {
+                            cprintln!("{}", line);
+                        }
+                        if result.output.is_empty() {
+                            cprintln!(dimmed = true, "(no output)");
+                        }
+                        cprintln_rule!();
+                        cprintln!();
+                    }
+                    result.evaluate(context)?;
+                }
+                if !context.args.quiet {
+                    println!("✅ OK (background)");
+                }
+            }
+            for block in defer_blocks {
+                block.run(context)?;
+            }
+            Ok(results)
+        })
+    }
+
+    pub fn run(&self, context: &mut ScriptRunContext) -> Result<Vec<ScriptResult>, ScriptRunError> {
         match self {
-            ScriptBlock::Command(command) => command.run(context)?,
+            ScriptBlock::Command(command) => {
+                let result = command.run(context)?;
+                if !context.background {
+                    result.evaluate(context)?;
+                    Ok(vec![])
+                } else {
+                    Ok(vec![result])
+                }
+            }
             ScriptBlock::If(condition, blocks) => {
                 if condition.matches(context) {
-                    for block in blocks {
-                        block.run(context)?;
-                    }
+                    Self::run_blocks(context, blocks)
+                } else {
+                    Ok(vec![])
                 }
             }
             ScriptBlock::For(ForCondition::Env(env, values), blocks) => {
+                let mut results = Vec::new();
                 for value in values {
                     context.envs.insert(env.clone(), value.clone());
-                    for block in blocks {
-                        block.run(context)?;
-                    }
+                    results.extend(Self::run_blocks(context, blocks)?);
                 }
+                Ok(results)
             }
             _ => unreachable!(),
         }
-        Ok(())
     }
 }
 
@@ -975,6 +1171,16 @@ impl Serialize for ScriptBlock {
     {
         match self {
             ScriptBlock::Command(command) => command.serialize(serializer),
+            ScriptBlock::Background(blocks) => {
+                let mut ser = serializer.serialize_map(Some(1))?;
+                ser.serialize_entry("background", blocks)?;
+                ser.end()
+            }
+            ScriptBlock::Defer(blocks) => {
+                let mut ser = serializer.serialize_map(Some(1))?;
+                ser.serialize_entry("defer", blocks)?;
+                ser.end()
+            }
             ScriptBlock::If(condition, blocks) => {
                 let mut ser = serializer.serialize_map(Some(2))?;
                 ser.serialize_entry("if", condition)?;
@@ -1064,7 +1270,7 @@ pub struct ScriptCommand {
 }
 
 impl ScriptCommand {
-    pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
+    pub fn run(&self, context: &mut ScriptRunContext) -> Result<ScriptResult, ScriptRunError> {
         use crate::{cprintln, cprintln_rule, term::Color};
 
         let command = &self.command;
@@ -1075,73 +1281,123 @@ impl ScriptCommand {
             cprintln_rule!(fg = Color::Cyan, "{}", command.location);
         }
         let (output, status) = command.run(
-            context.args.quiet,
+            context.args.quiet || context.background,
             context.args.show_line_numbers,
             context.args.runner.clone(),
             &context.envs,
+            &context.kill,
         )?;
-        if !self.exit.matches(status) {
-            println!("❌ FAIL: {status}");
-            if !args.ignore_exit_codes {
-                return Err(ScriptRunError::Exit(status));
-            }
-        }
-        if output.is_empty() && !args.quiet {
-            cprintln!(dimmed = true, "(no output)");
-        }
+
+        // Side-effects
         if let Some(set_var) = &self.set_var {
             context
                 .envs
                 .insert(set_var.clone(), output.to_string().trim().to_string());
         }
-        if !args.quiet {
-            cprintln_rule!();
-        }
+
+        let exit_result = if !self.exit.matches(status) {
+            ExitResult::Mismatch(status)
+        } else {
+            ExitResult::Matches
+        };
+
         let context = OutputMatchContext::new(context);
-        match self.pattern.matches(context.clone(), output) {
+        let pattern_result = match self.pattern.matches(context.clone(), output.clone()) {
             Ok(_) => {
                 if self.expect_failure {
-                    if !args.quiet {
-                        println!("❌ Expected failure, but passed");
-                    }
-                    if !args.ignore_matches {
-                        return Err(ScriptRunError::ExpectedFailure);
-                    }
+                    PatternResult::ExpectedFailure
                 } else {
-                    if !args.quiet {
-                        println!("✅ OK");
-                    }
+                    PatternResult::Matches
                 }
             }
             Err(e) => {
-                if !self.expect_failure {
-                    println!("ERROR: {e}");
-                    for line in context.traces() {
-                        println!("{line}");
-                    }
-                }
                 if self.expect_failure {
-                    if !args.quiet {
-                        println!("✅ OK (expected failure)");
-                    }
+                    PatternResult::MatchesFailure
                 } else {
-                    if !args.quiet {
-                        println!("❌ FAIL");
+                    let mut trace = String::new();
+                    for line in context.traces() {
+                        trace.push_str(&format!("{line}\n"));
                     }
-                    if !args.ignore_matches {
-                        return Err(ScriptRunError::Pattern(e));
-                    }
+                    PatternResult::Mismatch(e, trace)
                 }
             }
+        };
+
+        if output.is_empty() && !args.quiet {
+            cprintln!(dimmed = true, "(no output)");
         }
         if !args.quiet {
+            cprintln_rule!();
             cprintln!();
         }
+
         if let Some(delay) = args.delay_steps {
             std::thread::sleep(std::time::Duration::from_millis(delay));
         }
+
+        Ok(ScriptResult {
+            command: command.clone(),
+            pattern: pattern_result,
+            exit: exit_result,
+            output,
+        })
+    }
+}
+
+pub struct ScriptResult {
+    pub command: CommandLine,
+    pub pattern: PatternResult,
+    pub exit: ExitResult,
+    pub output: Lines,
+}
+
+impl ScriptResult {
+    pub fn evaluate(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
+        let args = &context.args;
+
+        if let ExitResult::Mismatch(status) = self.exit {
+            if !args.ignore_exit_codes {
+                if !args.quiet {
+                    cprintln!(fg = Color::Red, "❌ FAIL: {status}");
+                }
+                return Err(ScriptRunError::Exit(status));
+            }
+        }
+
+        if let PatternResult::Mismatch(e, trace) = &self.pattern {
+            if !args.ignore_matches {
+                if !args.quiet {
+                    cprintln!(fg = Color::Red, "ERROR: {e}");
+                    cprintln!(dimmed = true, "{trace}");
+                    cprintln!(fg = Color::Red, "❌ FAIL");
+                }
+                return Err(ScriptRunError::Pattern(e.clone()));
+            }
+        }
+
+        if let PatternResult::ExpectedFailure = self.pattern {
+            if !args.ignore_matches {
+                if !args.quiet {
+                    cprintln!(fg = Color::Red, "❌ OK (expected failure)");
+                }
+                return Err(ScriptRunError::ExpectedFailure);
+            }
+        }
+
         Ok(())
     }
+}
+
+pub enum PatternResult {
+    Matches,
+    MatchesFailure,
+    ExpectedFailure,
+    Mismatch(OutputPatternMatchFailure, String),
+}
+
+pub enum ExitResult {
+    Matches,
+    Mismatch(ExitStatus),
 }
 
 #[cfg(test)]

@@ -1,0 +1,15 @@
+#!/usr/bin/env clitest --v0
+
+$ mktemp
+%SET TEMP_FILE
+*
+
+background {
+    $ while true; do echo "background" >> $TEMP_FILE; sleep .01; done
+    %EXIT any
+}
+
+$ sleep .1 && cat $TEMP_FILE
+repeat {
+    ! background
+}

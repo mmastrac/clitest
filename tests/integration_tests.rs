@@ -17,6 +17,7 @@ fn main() {
     let tests = clitest::testing::load_test_scripts(std::env::args().nth(1).as_deref());
 
     for test in tests {
+        let is_fail = test.path.to_str().unwrap().contains("-fail");
         cprint!("Running ");
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
@@ -32,12 +33,21 @@ fn main() {
             show_line_numbers: true,
         };
         let mut context = ScriptRunContext::new(args);
-        if let Err(e) = script.run(&mut context) {
-            cprintln!(fg = Color::Red, "❌ FAIL");
-            failed += 1;
-            println!("{}", e);
+        if is_fail {
+            if let Err(e) = script.run(&mut context) {
+                cprintln!(fg = Color::Green, "✅ OK");
+            } else {
+                cprintln!(fg = Color::Red, "❌ FAIL (expected a failure)");
+                failed += 1;
+            }
         } else {
-            cprintln!(fg = Color::Green, "✅ OK");
+            if let Err(e) = script.run(&mut context) {
+                cprintln!(fg = Color::Red, "❌ FAIL");
+                failed += 1;
+                println!("{}", e);
+            } else {
+                cprintln!(fg = Color::Green, "✅ OK");
+            }
         }
     }
 

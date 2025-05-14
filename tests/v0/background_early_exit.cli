@@ -1,0 +1,10 @@
+#!/usr/bin/env clitest --v0
+
+background {
+    $ echo "hi"
+    ! hi
+    *
+}
+
+$ sleep .1
+*

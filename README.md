@@ -11,7 +11,7 @@ cargo install clitest
 ## Usage
 
 ```shell
-clitest <test-file> <test-file> ...
+clitest [options] [test-file] [test-file] ...
 ```
 
 The test runner will exit with a non-zero exit code if the command does not
@@ -22,7 +22,18 @@ match the expected output.
 The test files use the following syntax:
 
 - `# <comment>` - Comments that are ignored during test execution
+
+### Top-level
+
+- `background { ... }` - Run the enclosed commands in the background, killing
+  them when the current block finishes
+- `defer { ... }` - Run the enclosed commands after the test has finished
+- `for <var> in <list> { ... }` - Run the enclosed commands for each item in the list
+- `if <condition> { ... }` - Run the enclosed commands if the condition is true
 - `$ <command>` - Shell command to execute
+
+### Patterns
+
 - `? <grok pattern>` - Match output using a grok pattern (ie: parts outside of
   the grok patterns are interpreted as regex)
 - `! <grok pattern>` - Match output using an auto-escaped grok pattern (ie: the
@@ -37,6 +48,7 @@ The test files use the following syntax:
 - `ignore { ... }` - Ignore any output that matches the enclosed patterns
 - `reject { ... }` - Fail if any output matches the enclosed patterns
 - `*` - Match any output, lazily (completes when the next structure matches)
+- `if <condition> { ... }` - Run the enclosed patterns if the condition is true
 
 ## Examples
 

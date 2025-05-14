@@ -566,7 +566,7 @@ fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, Sc
         .iter()
         .position(|segment| segment.is_command_block())
         .unwrap_or(segments.len());
-    let (preamble, mut rest) = segments.split_at(preamble_index);
+    let (preamble, rest) = segments.split_at(preamble_index);
 
     let mut grok = Grok::with_default_patterns();
 
@@ -624,6 +624,10 @@ fn parse_normalized_script_v0_commands(
                         text,
                     ));
                 }
+            } else if block_type == "background" {
+                commands.push(ScriptBlock::Background(blocks));
+            } else if block_type == "defer" {
+                commands.push(ScriptBlock::Defer(blocks));
             } else {
                 return Err(ScriptError::new_with_data(
                     ScriptErrorType::InvalidBlockType,

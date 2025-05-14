@@ -1,0 +1,8 @@
+#!/usr/bin/env clitest --v0
+
+background {
+    $ exit 1
+}
+
+$ echo "hi"
+! hi

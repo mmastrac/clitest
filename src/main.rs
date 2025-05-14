@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use parser::parse_script;
 use script::{Script, ScriptFile, ScriptRunArgs, ScriptRunContext};
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 use termcolor::Color;
 
 mod command;

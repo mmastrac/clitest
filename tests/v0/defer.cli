@@ -1,0 +1,10 @@
+#!/usr/bin/env clitest --v0
+
+defer {
+    $ rm -rf $TEMP_DIR
+    *
+}
+
+$ mktemp -d
+%SET TEMP_DIR
+*

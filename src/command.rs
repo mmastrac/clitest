@@ -12,7 +12,7 @@ use termcolor::Color;
 
 use crate::{
     cprint, cprintln,
-    script::{Lines, ScriptLocation},
+    script::{Lines, ScriptKillReceiver, ScriptLocation},
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -40,6 +40,7 @@ impl CommandLine {
         show_line_numbers: bool,
         runner: Option<String>,
         envs: &HashMap<String, String>,
+        kill_receiver: &ScriptKillReceiver,
     ) -> Result<(Lines, ExitStatus), std::io::Error> {
         let mut command = if let Some(runner) = runner {
             let bits = shellish_parse::parse(&runner, ParseOptions::default())
@@ -115,7 +116,7 @@ impl CommandLine {
             }
         });
 
-        let res = output.wait()?;
+        let res = kill_receiver.run_cmd(output)?;
         stdout.join().map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::Other, "stdout thread panicked")
         })?;

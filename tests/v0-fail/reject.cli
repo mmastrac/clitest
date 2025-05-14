@@ -1,0 +1,7 @@
+#!/usr/bin/env clitest --v0
+
+$ echo "hello"
+reject {
+    ! hello
+}
+*
