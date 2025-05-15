@@ -1,29 +1,29 @@
 #!/usr/bin/env clitest --v0
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 *
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 ! a
 *
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 ! a
 ! b
 *
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 ! a
 ! b
 ! c
 *
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 ! a
 *
 ! c
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 %EXPECT_FAILURE
 ! a
 ! b
@@ -31,14 +31,14 @@ $ echo "a\nb\nc"
 ! d
 *
 
-$ echo "a\nb\nc\nd\ne"
+$ printf "a\nb\nc\nd\ne\n"
 ! a
 ! b
 *
 ! d
 ! e
 
-$ echo "start\n1\n2\nend\nstart\n1\n2\nend"
+$ printf "start\n1\n2\nend\nstart\n1\n2\nend\n"
 repeat {
     ! start
     *

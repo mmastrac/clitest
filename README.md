@@ -121,3 +121,187 @@ $ echo "a\nb\nc"
 %EXPECT_FAILURE
 ! wrong
 ```
+
+# CLI Test Format Manual
+
+This document describes the format and features of the CLI test system.
+
+## Basic Syntax
+
+CLI test files use a special format to define test cases. Each test file should start with the shebang:
+
+```bash
+#!/usr/bin/env clitest --v0
+```
+
+## Command Execution
+
+Commands are prefixed with `$`:
+
+```bash
+$ echo "Hello World"
+```
+
+## Output Matching
+
+### Pattern Matching
+
+There are two types of pattern matching:
+
+1. `!` (Auto-escaped patterns):
+   - Non-grok parts are automatically escaped to be treated as literal text
+   - Grok patterns (like `%{DATA}`) are still interpreted
+   - Example:
+     ```bash
+     $ printf "[LOG] Hello, world!\n"
+     ! [LOG] %{GREEDYDATA}  # [LOG] is treated literally, %{GREEDYDATA} matches any text
+     ```
+
+2. `?` (Raw patterns):
+   - Everything is treated as a pattern
+   - Special characters need to be escaped with `\`
+   - Example:
+     ```bash
+     $ printf "[LOG] Hello, world!\n"
+     ? \[LOG\] %{GREEDYDATA}  # \[LOG\] matches [LOG] literally
+     ```
+
+### Multi-line Output
+
+Use `!!!` for auto-escaped multi-line patterns or `???` for raw multi-line patterns:
+
+```bash
+$ printf "a\nb\nc\n"
+!!!
+a
+b
+c
+!!!
+```
+
+## Control Structures
+
+### Repeat
+
+The `repeat` block allows matching repeated patterns:
+
+```bash
+$ printf "a\nb\nc\n"
+repeat {
+    choice {
+        ! a
+        ! b
+        ! c
+    }
+}
+```
+
+### Choice
+
+The `choice` block matches any one of the specified patterns:
+
+```bash
+choice {
+    ! pattern1
+    ! pattern2
+    ! pattern3
+}
+```
+
+### Unordered
+
+The `unordered` block matches patterns in any order:
+
+```bash
+unordered {
+    ! a
+    ! b
+    ! c
+}
+```
+
+### Sequence
+
+The `sequence` block matches patterns in strict order:
+
+```bash
+sequence {
+    ! a
+    ! b
+    ! c
+}
+```
+
+### Optional
+
+The `optional` block makes a pattern optional:
+
+```bash
+optional {
+    ! optional output
+}
+```
+
+### Ignore
+
+The `ignore` block allows skipping certain output:
+
+```bash
+ignore {
+    ? WARNING: %{DATA}
+}
+```
+
+### Reject
+
+The `reject` block ensures certain patterns don't appear:
+
+```bash
+reject {
+    ! ERROR
+}
+```
+
+## Environment Variables
+
+### Setting Variables
+
+You can set environment variables using `%SET`:
+
+```bash
+$ printf "value\n"
+%SET MY_VAR
+*
+```
+
+### Special Variables
+
+- `PWD`: A special environment variable that controls the current working directory
+  ```bash
+  $ mktemp -d
+  %SET TEMP_DIR
+  *
+  
+  # Set PWD to change working directory
+  $ echo $TEMP_DIR
+  %SET PWD
+  *
+  ```
+
+## Special Characters and Patterns
+
+- Use `\` for line continuation
+- Use `%%` to escape `%` in patterns
+- Use `%{DATA}` to match any text in patterns
+- Use `%{GREEDYDATA}` to match any text greedily
+- Use `*` to match any output lazily (completes when the next structure matches)
+
+## Best Practices
+
+1. Use `!!!` or `???` for multi-line output matching
+2. Use `!` for patterns where you want literal matching of non-grok parts
+3. Use `?` for patterns where you need full control over escaping
+4. Use appropriate control structures for complex output matching
+5. Set up environment variables when needed for test consistency
+6. Use `defer` blocks to clean up temporary resources
+7. Use `PWD` to control the working directory when needed

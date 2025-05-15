@@ -4,6 +4,6 @@ reject {
     ! Hello, world!
 }
 
-$ echo "Hello, world!"
+$ printf "Hello, world!\n"
 %EXPECT_FAILURE
 *

@@ -14,7 +14,7 @@
 
 pattern FILENAME [\w\-\.]+
 
-$ rm -rf /tmp/testing-dir || echo "no dir to remove"
+$ rm -rf /tmp/testing-dir || printf "no dir to remove\n"
 $ mkdir /tmp/testing-dir
 
 $ cd /tmp/testing-dir && ls -al
@@ -22,8 +22,8 @@ $ cd /tmp/testing-dir && ls -al
 ! %{GREEDYDATA} .
 ! %{GREEDYDATA} ..
 
-$ echo "hello world" > /tmp/testing-dir/file1
-$ echo "world" > /tmp/testing-dir/file2
+$ printf "hello world\n" > /tmp/testing-dir/file1
+$ printf "world\n" > /tmp/testing-dir/file2
 
 $ ls -al /tmp/testing-dir
 !!!

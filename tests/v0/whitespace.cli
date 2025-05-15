@@ -1,38 +1,38 @@
 #!/usr/bin/env clitest --v0
 
-$ echo "  X  "
+$ printf "  X  \n"
 !   X
 
-$ echo "  X  "
+$ printf "  X  \n"
 ?   X
 
-$ echo "  X  "
+$ printf "  X  \n"
 ? ^  X  $
 
-$ echo "  X  "
+$ printf "  X  \n"
 !!!
   X
 !!!
 
-$ echo "  X  "
+$ printf "  X  \n"
 ???
   X
 ???
 
 
-$ echo "  X  "
+$ printf "  X  \n"
 ???
 ^  X  $
 ???
 
-$ echo "   X   "
+$ printf "   X   \n"
 %EXPECT_FAILURE
 !   X
 
-$ echo "   X   "
+$ printf "   X   \n"
 %EXPECT_FAILURE
 ?   X
 
-$ echo "   X   "
+$ printf "   X   \n"
 %EXPECT_FAILURE
 ? ^  X  $

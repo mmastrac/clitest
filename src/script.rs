@@ -2,11 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     process::ExitStatus,
-    sync::{
-        Arc, Mutex,
-        atomic::AtomicBool,
-        mpsc::{Receiver, Sender, TryRecvError},
-    },
+    sync::{Arc, Mutex, atomic::AtomicBool},
     time::Duration,
 };
 
@@ -292,22 +288,84 @@ impl ScriptKillReceiver {
         })
     }
 
+    #[cfg(windows)]
+    pub fn run_cmd(&self, output: std::process::Child) -> std::io::Result<ExitStatus> {
+        use std::os::windows::io::AsRawHandle;
+        use win32job::Job;
+
+        fn map_job_error(e: win32job::JobError) -> std::io::Error {
+            match e {
+                win32job::JobError::AssignFailed(e) => e,
+                win32job::JobError::CreateFailed(e) => e,
+                win32job::JobError::GetInfoFailed(e) => e,
+                win32job::JobError::SetInfoFailed(e) => e,
+                _ => std::io::Error::new(std::io::ErrorKind::Other, "Unknown error"),
+            }
+        }
+
+        // Create a new Job object
+        let job = Job::create().map_err(map_job_error)?;
+
+        // Configure the job to terminate all child processes when the job is closed
+        let mut info = job.query_extended_limit_info().map_err(map_job_error)?;
+        info.limit_kill_on_job_close();
+        job.set_extended_limit_info(&info).map_err(map_job_error)?;
+        job.assign_process(output.as_raw_handle() as _);
+
+        // Resume the main thread for the process
+        let id = output.id();
+        for thread_entry in tlhelp32::Snapshot::new_thread()? {
+            if thread_entry.owner_process_id == id {
+                use windows_sys::Win32::Foundation::CloseHandle;
+                use windows_sys::Win32::System::Threading::*;
+
+                // TODO: error handling
+                unsafe {
+                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, thread_entry.thread_id);
+                    ResumeThread(thread);
+                    CloseHandle(thread);
+                }
+            }
+        }
+
+        let job = Mutex::new(Some(job));
+        let output = Mutex::new(output);
+        self.run_with(
+            || {
+                _ = job.lock().unwrap().take();
+                _ = output.lock().unwrap().kill();
+            },
+            || {
+                let start = std::time::Instant::now();
+                let mut warned = false;
+                loop {
+                    let res = output.lock().unwrap().try_wait()?;
+                    if let Some(status) = res {
+                        return Ok::<_, std::io::Error>(status);
+                    }
+                    if start.elapsed() > std::time::Duration::from_secs(10) {
+                        if !warned {
+                            let child = output.lock().unwrap().id();
+                            eprintln!("Process #{child} taking too long to finish.");
+                            warned = true;
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            },
+        )
+    }
+
+    #[cfg(unix)]
     pub fn run_cmd(&self, output: std::process::Child) -> std::io::Result<ExitStatus> {
         let output = Mutex::new(output);
         self.run_with(
             || {
-                #[cfg(unix)]
-                {
-                    use signal_child::{signal, signal::*};
-                    let id = output.lock().unwrap().id() as i32;
-                    _ = signal(-id, SIGINT);
-                    std::thread::sleep(Duration::from_millis(10));
-                    _ = signal(-id, SIGTERM);
-                }
-                #[cfg(not(unix))]
-                {
-                    _ = output.lock().unwrap().kill();
-                }
+                use signal_child::{signal, signal::*};
+                let id = output.lock().unwrap().id() as i32;
+                _ = signal(-id, SIGINT);
+                std::thread::sleep(Duration::from_millis(10));
+                _ = signal(-id, SIGTERM);
             },
             || {
                 let start = std::time::Instant::now();
@@ -814,6 +872,20 @@ pub enum ScriptRunError {
     BackgroundProcessTookTooLong,
 }
 
+impl ScriptRunError {
+    #[allow(unused)]
+    pub fn short(&self) -> String {
+        match self {
+            Self::Pattern(_) => "Pattern".to_string(),
+            Self::Exit(status) => format!("Exit({})", status),
+            Self::ExpectedFailure => "ExpectedFailure".to_string(),
+            Self::IO(e) => format!("IO({:?})", e.kind()),
+            Self::Killed => "Killed".to_string(),
+            Self::BackgroundProcessTookTooLong => "BackgroundProcessTookTooLong".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
 #[display("pattern {pattern_type} at line {location} does not match output line {:?}", output_line.as_ref().map(|l| l.text.clone()).unwrap_or("<eof>".to_string()))]
 pub struct OutputPatternMatchFailure {
@@ -1142,11 +1214,21 @@ impl ScriptBlock {
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     if !warned && start.elapsed() > std::time::Duration::from_secs(10) {
-                        eprintln!("Background process is taking too long to finish.");
+                        if !context.args.quiet {
+                            cprintln!(
+                                fg = Color::Yellow,
+                                "Background process is taking too long to finish."
+                            );
+                        }
                         warned = true;
                     }
                     if start.elapsed() > std::time::Duration::from_secs(30) {
-                        eprintln!("Background process took too long to finish.");
+                        if !context.args.quiet {
+                            cprintln!(
+                                fg = Color::Red,
+                                "Background process took too long to finish."
+                            );
+                        }
                         return Err(ScriptRunError::BackgroundProcessTookTooLong);
                     }
                 };
@@ -1162,15 +1244,14 @@ impl ScriptBlock {
                             cprintln!(dimmed = true, "(no output)");
                         }
                         cprintln_rule!();
-                        cprintln!();
                     }
                     result.evaluate(context)?;
                 }
-                if !context.args.quiet {
-                    println!("✅ OK (background)");
-                }
             }
             for block in defer_blocks {
+                if !context.args.quiet {
+                    cprint!(dimmed = true, "(deferred) ");
+                }
                 block.run(context)?;
             }
             if let Some(error) = pending_error {
@@ -1345,7 +1426,7 @@ impl ScriptCommand {
         let exit_result = if !self.exit.matches(status) {
             ExitResult::Mismatch(status)
         } else {
-            ExitResult::Matches
+            ExitResult::Matches(status)
         };
 
         let context = OutputMatchContext::new(context);
@@ -1375,7 +1456,6 @@ impl ScriptCommand {
         }
         if !args.quiet {
             cprintln_rule!();
-            cprintln!();
         }
 
         if let Some(delay) = args.delay_steps {
@@ -1403,12 +1483,18 @@ pub struct ScriptResult {
 impl ScriptResult {
     pub fn evaluate(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
         let args = &context.args;
+        let (success, failure, arrow) = if *crate::term::IS_UTF8 {
+            ("✅", "❌", "→")
+        } else {
+            ("[*]", "[X]", "->")
+        };
 
         if let ExitResult::Mismatch(status) = self.exit {
             if !args.ignore_exit_codes {
                 if !args.quiet {
-                    cprintln!(fg = Color::Red, "❌ FAIL: {status}");
-                    cprintln!(dimmed = true, "{}", self.command.command);
+                    cprintln!(fg = Color::Red, "{failure} FAIL: {status}");
+                    cprintln!(dimmed = true, " {arrow} {}", self.command.command);
+                    cprintln!();
                 }
                 return Err(ScriptRunError::Exit(status));
             }
@@ -1419,7 +1505,8 @@ impl ScriptResult {
                 if !args.quiet {
                     cprintln!(fg = Color::Red, "ERROR: {e}");
                     cprintln!(dimmed = true, "{trace}");
-                    cprintln!(fg = Color::Red, "❌ FAIL");
+                    cprintln!(fg = Color::Red, "{failure} FAIL");
+                    cprintln!();
                 }
                 return Err(ScriptRunError::Pattern(e.clone()));
             }
@@ -1428,10 +1515,22 @@ impl ScriptResult {
         if let PatternResult::ExpectedFailure = self.pattern {
             if !args.ignore_matches {
                 if !args.quiet {
-                    cprintln!(fg = Color::Red, "❌ OK (expected failure)");
-                    cprintln!(dimmed = true, "{}", self.command.command);
+                    cprintln!(fg = Color::Red, "{failure} FAIL (output shouldn't match)");
+                    cprintln!(dimmed = true, " {arrow} {}", self.command.command);
+                    cprintln!();
                 }
                 return Err(ScriptRunError::ExpectedFailure);
+            }
+        }
+
+        if let ExitResult::Matches(status) = self.exit {
+            if !args.quiet {
+                if status.success() {
+                    cprintln!(fg = Color::Green, "{success} OK");
+                } else {
+                    cprintln!(fg = Color::Green, "{success} OK ({status})");
+                }
+                cprintln!();
             }
         }
 
@@ -1449,7 +1548,7 @@ pub enum PatternResult {
 
 #[derive(Debug)]
 pub enum ExitResult {
-    Matches,
+    Matches(ExitStatus),
     Mismatch(ExitStatus),
 }
 

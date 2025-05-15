@@ -4,14 +4,14 @@ ignore {
     ! IGNORED%{GREEDYDATA}
 }
 
-$ echo "IGNORED something\na"
+$ printf "IGNORED something\na\n"
 ! a
 
-$ echo "a\nIGNORED something\nb"
+$ printf "a\nIGNORED something\nb\n"
 ! a
 ! b
 
-$ echo "a\nXIGNORED something\nb\nXIGNORED something else\nc"
+$ printf "a\nXIGNORED something\nb\nXIGNORED something else\nc\n"
 ! a
 sequence {
     ignore {
@@ -21,7 +21,7 @@ sequence {
     ! c
 }
 
-$ echo "LOG first\na\nLOG something\nb\nLOG something else\nc"
+$ printf "LOG first\na\nLOG something\nb\nLOG something else\nc\n"
 %EXPECT_FAILURE
 ! a
 sequence {

@@ -5,7 +5,7 @@ $ mktemp
 *
 
 background {
-    $ while true; do echo "background" >> $TEMP_FILE; sleep .01; done
+    $ while true; do printf "background\n" >> $TEMP_FILE; sleep .01; done
     %EXIT any
 }
 

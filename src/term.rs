@@ -8,17 +8,7 @@ pub static STDOUT: std::sync::LazyLock<Mutex<StandardStream>> =
     std::sync::LazyLock::new(|| Mutex::new(StandardStream::stdout(ColorChoice::Auto)));
 
 pub static IS_UTF8: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
-    if cfg!(windows) {
-        true
-    } else if cfg!(unix) {
-        if std::env::var("LANG").unwrap_or_default().contains("UTF-8") {
-            true
-        } else {
-            false
-        }
-    } else {
-        false
-    }
+    utf8_supported::utf8_supported() == utf8_supported::Utf8Support::UTF8
 });
 
 /// We need to filter out onig panic messages.
@@ -119,6 +109,7 @@ macro_rules! cprint {
             use termcolor::{WriteColor, ColorSpec};
 
             let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            #[allow(unused_mut)]
             let mut color = ColorSpec::new();
             $(
                 color.set_bg(Some($bg));

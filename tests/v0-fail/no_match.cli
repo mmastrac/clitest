@@ -1,4 +1,4 @@
 #!/usr/bin/env clitest --v0
 
-$ echo "hello"
+$ printf "hello\n"
 ! bye

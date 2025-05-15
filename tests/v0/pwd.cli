@@ -3,14 +3,33 @@
 $ pwd
 *
 
-$ mktemp -d
-%SET TEMP_DIR
-%SET PWD
-*
+if TARGET_OS == "windows" {
+    # Map the temp dir to a Windows path compatible with PWD
+    # https://mingw-users.narkive.com/1K8kSmn0/msys-path-to-windows-path
+    $ mktemp -d -p $(cmd //c echo /tmp)
+    %SET TEMP_DIR
+    *
+}
+
+if TARGET_OS != "windows" {
+    $ mktemp -d
+    %SET TEMP_DIR
+    *
+}
 
 defer {
-    $ rm -rf $TEMP_DIR
+    if TARGET_OS == "windows" {
+        # TODO: We need to figure this out
+    }
+    if TARGET_OS != "windows" {
+        $ rm -rf $TEMP_DIR
+    }
 }
+
+# Set PWD after we defer deletion to avoid being unable to delete the temp dir.
+$ echo $TEMP_DIR
+%SET PWD
+*
 
 $ pwd
 *

@@ -1,13 +1,13 @@
 #!/usr/bin/env clitest --v0
 
-$ echo "a\nb\nc\n"
+$ printf "a\nb\nc\n\n"
 !!!
 a
 b
 c
 
 !!!
-$ echo "a\nb\nc\n"
+$ printf "a\nb\nc\n\n"
 ! a
 ! b
 ! c
@@ -31,23 +31,23 @@ c
 abc
 !!!
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 %SET ENV_VAR
 *
 
-$ echo "$ENV_VAR"
+$ printf "$ENV_VAR\n"
 !!!
 a
 b
 c
 !!!
 
-$ VAR2="a\nb\nc" sh -c 'echo "$VAR2"'
+$ VAR2="a\nb\nc" sh -c 'printf "$VAR2\n"'
 !!!
 a
 b
 c
 !!!
 
-$ echo "%{}"
+$ printf "%%{}\n"
 ! %{}

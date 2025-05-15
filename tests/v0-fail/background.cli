@@ -4,5 +4,5 @@ background {
     $ exit 1
 }
 
-$ echo "hi"
+$ printf "hi\n"
 ! hi

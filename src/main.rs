@@ -156,7 +156,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cprintln!(fg = Color::Green, "PASSED");
                 }
                 Err(e) => {
-                    cprintln!();
                     cprint!(fg = Color::Cyan, "{} ", script.original_path);
                     cprintln!(fg = Color::Red, "FAILED");
                     failed += 1;

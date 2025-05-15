@@ -63,6 +63,12 @@ impl CommandLine {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_SUSPENDED: u32 = 0x00000004;
+            command.creation_flags(CREATE_SUSPENDED);
+        }
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         command.stdin(Stdio::null());

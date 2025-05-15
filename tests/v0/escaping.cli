@@ -1,29 +1,29 @@
 #!/usr/bin/env clitest --v0
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 ! [LOG] %{GREEDYDATA}
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 ! [LOG] Hello, world!
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 ? \[LOG\] %{GREEDYDATA}
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 ? \[%{log=(LOG)}\] %{GREEDYDATA}
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 %EXPECT_FAILURE
 ! [LOG]
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 %EXPECT_FAILURE
 ! [%{DATA}]
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 %EXPECT_FAILURE
 ? \[LOG\]
 
-$ echo "[LOG] Hello, world!"
+$ printf "[LOG] Hello, world!\n"
 %EXPECT_FAILURE
 ? \[%{DATA}\]

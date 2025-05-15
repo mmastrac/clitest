@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use clitest::{
-    cprint, cprintln,
+    cprint, cprintln, cprintln_rule,
     parser::parse_script,
     script::{ScriptFile, ScriptRunArgs, ScriptRunContext},
     term::{self, Color},
@@ -15,6 +13,7 @@ fn main() {
     cprintln!();
 
     let tests = clitest::testing::load_test_scripts(std::env::args().nth(1).as_deref());
+    let mut failed_tests = Vec::new();
 
     for test in tests {
         let is_fail = test.path.to_str().unwrap().contains("-fail");
@@ -22,33 +21,49 @@ fn main() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
 
-        let script = parse_script(ScriptFile::new(test.path), &test.content).unwrap();
+        let script = parse_script(ScriptFile::new(test.path.clone()), &test.content).unwrap();
         total += 1;
         let args = ScriptRunArgs {
-            delay_steps: None,
-            ignore_exit_codes: false,
-            ignore_matches: false,
             quiet: true,
-            runner: None,
             show_line_numbers: true,
+            ..Default::default()
         };
         let mut context = ScriptRunContext::new(args);
         if is_fail {
             if let Err(e) = script.run(&mut context) {
-                cprintln!(fg = Color::Green, "✅ OK");
+                cprintln!(fg = Color::Green, "✅ OK ({})", e.short());
             } else {
                 cprintln!(fg = Color::Red, "❌ FAIL (expected a failure)");
                 failed += 1;
+                failed_tests.push(test);
             }
         } else {
             if let Err(e) = script.run(&mut context) {
                 cprintln!(fg = Color::Red, "❌ FAIL");
                 failed += 1;
-                println!("{}", e);
+                cprintln!(fg = Color::Red, "{}", e);
+                failed_tests.push(test);
             } else {
                 cprintln!(fg = Color::Green, "✅ OK");
             }
         }
+    }
+
+    for test in failed_tests {
+        cprintln!();
+        cprintln_rule!();
+        cprint!("Re-running failed test ");
+        cprint!(fg = Color::Green, "{}", test.name);
+        cprintln!(" ... ");
+        cprintln_rule!();
+        let script = parse_script(ScriptFile::new(test.path.clone()), &test.content).unwrap();
+        let args = ScriptRunArgs {
+            show_line_numbers: true,
+            ..Default::default()
+        };
+        let mut context = ScriptRunContext::new(args);
+        _ = script.run(&mut context);
+        cprintln_rule!();
     }
 
     cprintln!();
@@ -60,4 +75,8 @@ fn main() {
         failed
     );
     cprintln!();
+
+    if failed > 0 {
+        std::process::exit(1);
+    }
 }

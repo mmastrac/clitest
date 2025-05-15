@@ -1,7 +1,5 @@
-use std::{path::PathBuf, process::Output, sync::Arc};
-
 use grok::Grok;
-use shellish_parse::ParseOptions;
+use std::sync::Arc;
 
 use crate::{
     command::CommandLine,

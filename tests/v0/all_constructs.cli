@@ -12,7 +12,7 @@
 #   - ignore { ... }
 #   - reject { ... }
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 repeat {
     # Any of these will do
     choice {
@@ -22,14 +22,14 @@ repeat {
     }
 }
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 unordered {
     ! c
     ! a
     ! b
 }
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 sequence {
     ! a
     sequence {
@@ -40,7 +40,7 @@ sequence {
     }
 }
 
-$ echo "a\nb\nc"
+$ printf "a\nb\nc\n"
 ! a
 optional {
     ! doesn't happen!!
@@ -48,7 +48,7 @@ optional {
 ! b
 ! c
 
-$ echo "a\nWARNING: UH OH\nb\nc"
+$ printf "a\nWARNING: UH OH\nb\nc\n"
 ignore {
     ? WARNING: %{DATA}
 }
@@ -58,7 +58,7 @@ b
 c
 !!!
 
-$ echo "hello\nworld"
+$ printf "hello\nworld\n"
 repeat {
     choice {
         ! hello
