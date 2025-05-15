@@ -4,6 +4,7 @@ use std::{
     process::ExitStatus,
     sync::{
         Arc, Mutex,
+        atomic::AtomicBool,
         mpsc::{Receiver, Sender, TryRecvError},
     },
     time::Duration,
@@ -234,51 +235,50 @@ pub struct ScriptRunContext {
 
 impl Default for ScriptRunContext {
     fn default() -> Self {
-        let (kill_sender, kill_receiver) = std::sync::mpsc::channel();
+        let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: ScriptRunArgs::default(),
             envs: HashMap::new(),
             background: false,
-            kill: ScriptKillReceiver::new(kill_receiver),
-            kill_sender: ScriptKillSender::new(kill_sender),
+            kill: ScriptKillReceiver::new(kill.clone()),
+            kill_sender: ScriptKillSender::new(kill.clone()),
         }
     }
 }
 
 impl ScriptRunContext {
     pub fn new_background(&self) -> Self {
-        let (kill_sender, kill_receiver) = std::sync::mpsc::channel();
+        let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: self.args.clone(),
             envs: self.envs.clone(),
             background: true,
-            kill: ScriptKillReceiver::new(kill_receiver),
-            kill_sender: ScriptKillSender::new(kill_sender),
+            kill: ScriptKillReceiver::new(kill.clone()),
+            kill_sender: ScriptKillSender::new(kill.clone()),
         }
     }
 }
 
 pub struct ScriptKillReceiver {
-    kill_receiver: Mutex<Receiver<()>>,
+    kill_receiver: Arc<AtomicBool>,
 }
 
 impl ScriptKillReceiver {
-    pub fn new(kill_receiver: Receiver<()>) -> Self {
-        Self {
-            kill_receiver: Mutex::new(kill_receiver),
-        }
+    pub fn new(kill_receiver: Arc<AtomicBool>) -> Self {
+        Self { kill_receiver }
     }
 
     pub fn is_killed(&self) -> bool {
-        matches!(self.kill_receiver.try_lock().unwrap().try_recv(), Ok(()))
+        self.kill_receiver.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn run_with<T>(&self, kill: impl FnOnce() + Send, wait: impl FnOnce() -> T) -> T {
         std::thread::scope(|s| {
-            let (tx, rx) = std::sync::mpsc::channel::<()>();
+            let done = Arc::new(AtomicBool::new(false));
+            let done_clone = done.clone();
             let t = s.spawn(move || {
-                while matches!(rx.try_recv(), Err(TryRecvError::Empty)) {
-                    if let Ok(_) = self.kill_receiver.try_lock().unwrap().try_recv() {
+                while !done_clone.load(std::sync::atomic::Ordering::SeqCst) {
+                    if self.is_killed() {
                         kill();
                         break;
                     }
@@ -286,7 +286,7 @@ impl ScriptKillReceiver {
                 }
             });
             let res = wait();
-            drop(tx);
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
             t.join().unwrap();
             res
         })
@@ -298,22 +298,34 @@ impl ScriptKillReceiver {
             || {
                 #[cfg(unix)]
                 {
-                    use signal_child::Signalable;
-                    _ = output.lock().unwrap().interrupt();
+                    use signal_child::{signal, signal::*};
+                    let id = output.lock().unwrap().id() as i32;
+                    _ = signal(-id, SIGINT);
                     std::thread::sleep(Duration::from_millis(10));
-                    _ = output.lock().unwrap().kill();
+                    _ = signal(-id, SIGTERM);
                 }
                 #[cfg(not(unix))]
                 {
                     _ = output.lock().unwrap().kill();
                 }
             },
-            || loop {
-                let res = output.lock().unwrap().try_wait()?;
-                if let Some(status) = res {
-                    return Ok::<_, std::io::Error>(status);
+            || {
+                let start = std::time::Instant::now();
+                let mut warned = false;
+                loop {
+                    let res = output.lock().unwrap().try_wait()?;
+                    if let Some(status) = res {
+                        return Ok::<_, std::io::Error>(status);
+                    }
+                    if start.elapsed() > std::time::Duration::from_secs(10) {
+                        if !warned {
+                            let child = output.lock().unwrap().id();
+                            eprintln!("Process #{child} taking too long to finish.");
+                            warned = true;
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
                 }
-                std::thread::sleep(Duration::from_millis(10));
             },
         )
     }
@@ -321,16 +333,17 @@ impl ScriptKillReceiver {
 
 #[derive(Clone)]
 pub struct ScriptKillSender {
-    kill_sender: Sender<()>,
+    kill_sender: Arc<AtomicBool>,
 }
 
 impl ScriptKillSender {
-    pub fn new(kill_sender: Sender<()>) -> Self {
+    pub fn new(kill_sender: Arc<AtomicBool>) -> Self {
         Self { kill_sender }
     }
 
     pub fn kill(&self) {
-        _ = self.kill_sender.send(());
+        self.kill_sender
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -360,14 +373,23 @@ impl ScriptRunContext {
             ["x86", "x86_64", "arm", "aarch64"]
         );
 
-        let (kill_sender, kill_receiver) = std::sync::mpsc::channel();
+        // Set the current working directory as a special variable "PWD"
+        envs.insert(
+            "PWD".to_string(),
+            std::env::current_dir()
+                .expect("Couldn't get current directory")
+                .to_string_lossy()
+                .to_string(),
+        );
+
+        let kill = Arc::new(AtomicBool::new(false));
 
         Self {
             args,
             envs,
             background: false,
-            kill: ScriptKillReceiver::new(kill_receiver),
-            kill_sender: ScriptKillSender::new(kill_sender),
+            kill: ScriptKillReceiver::new(kill.clone()),
+            kill_sender: ScriptKillSender::new(kill.clone()),
         }
     }
 }
@@ -788,6 +810,8 @@ pub enum ScriptRunError {
     IO(#[from] std::io::Error),
     #[error("killed")]
     Killed,
+    #[error("background process took too long to finish")]
+    BackgroundProcessTookTooLong,
 }
 
 #[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
@@ -1083,29 +1107,49 @@ impl ScriptBlock {
         std::thread::scope(|s| {
             let mut defer_blocks = Vec::new();
             let mut background = Vec::new();
+            let mut pending_error = None;
             for block in blocks {
                 if context.kill.is_killed() {
                     return Err(ScriptRunError::Killed);
                 }
                 match block {
                     ScriptBlock::Background(blocks) => {
-                        for block in blocks {
-                            let mut context = context.new_background();
-                            context.args.quiet = true;
-                            let kill_sender = context.kill_sender.clone();
-                            let handle = s.spawn(move || block.run(&mut context));
-                            background.push((handle, kill_sender));
-                        }
+                        let mut context = context.new_background();
+                        context.args.quiet = true;
+                        let kill_sender = context.kill_sender.clone();
+                        let handle = s.spawn(move || Self::run_blocks(&mut context, blocks));
+                        background.push((handle, kill_sender));
                     }
                     ScriptBlock::Defer(blocks) => {
                         defer_blocks.extend(blocks);
                     }
-                    _ => results.extend(block.run(context)?),
+                    _ => match block.run(context) {
+                        Ok(res) => results.extend(res),
+                        Err(e) => {
+                            pending_error = Some(e);
+                            break;
+                        }
+                    },
                 }
             }
             for (handle, kill_sender) in background {
                 kill_sender.kill();
-                let results = handle.join().unwrap()?;
+                let start = std::time::Instant::now();
+                let mut warned = false;
+                let results = loop {
+                    if handle.is_finished() {
+                        break handle.join().unwrap()?;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    if !warned && start.elapsed() > std::time::Duration::from_secs(10) {
+                        eprintln!("Background process is taking too long to finish.");
+                        warned = true;
+                    }
+                    if start.elapsed() > std::time::Duration::from_secs(30) {
+                        eprintln!("Background process took too long to finish.");
+                        return Err(ScriptRunError::BackgroundProcessTookTooLong);
+                    }
+                };
                 for result in results {
                     if !context.args.quiet {
                         cprint!(dimmed = true, "(background) ");
@@ -1128,6 +1172,9 @@ impl ScriptBlock {
             }
             for block in defer_blocks {
                 block.run(context)?;
+            }
+            if let Some(error) = pending_error {
+                return Err(error);
             }
             Ok(results)
         })
@@ -1344,10 +1391,12 @@ impl ScriptCommand {
     }
 }
 
+#[derive(derive_more::Debug)]
 pub struct ScriptResult {
     pub command: CommandLine,
     pub pattern: PatternResult,
     pub exit: ExitResult,
+    #[debug(skip)]
     pub output: Lines,
 }
 
@@ -1359,6 +1408,7 @@ impl ScriptResult {
             if !args.ignore_exit_codes {
                 if !args.quiet {
                     cprintln!(fg = Color::Red, "❌ FAIL: {status}");
+                    cprintln!(dimmed = true, "{}", self.command.command);
                 }
                 return Err(ScriptRunError::Exit(status));
             }
@@ -1379,6 +1429,7 @@ impl ScriptResult {
             if !args.ignore_matches {
                 if !args.quiet {
                     cprintln!(fg = Color::Red, "❌ OK (expected failure)");
+                    cprintln!(dimmed = true, "{}", self.command.command);
                 }
                 return Err(ScriptRunError::ExpectedFailure);
             }
@@ -1388,6 +1439,7 @@ impl ScriptResult {
     }
 }
 
+#[derive(Debug)]
 pub enum PatternResult {
     Matches,
     MatchesFailure,
@@ -1395,6 +1447,7 @@ pub enum PatternResult {
     Mismatch(OutputPatternMatchFailure, String),
 }
 
+#[derive(Debug)]
 pub enum ExitResult {
     Matches,
     Mismatch(ExitStatus),

@@ -1,0 +1,16 @@
+#!/usr/bin/env clitest --v0
+
+$ pwd
+*
+
+$ mktemp -d
+%SET TEMP_DIR
+%SET PWD
+*
+
+defer {
+    $ rm -rf $TEMP_DIR
+}
+
+$ pwd
+*

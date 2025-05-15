@@ -1,0 +1,41 @@
+#!/usr/bin/env clitest --v0
+
+$ mktemp -d
+%SET TEMP_DIR
+%SET PWD
+*
+
+defer {
+    $ rm -rf $TEMP_DIR
+}
+
+background {
+    $ python3 -m http.server 61123
+    %EXIT any
+    repeat {
+        choice {
+            ? %{IPORHOST} %{GREEDYDATA} code %{NUMBER}, %{GREEDYDATA}
+            ? %{IPORHOST} %{GREEDYDATA} "GET /%{DATA}.html %{DATA}" %{NUMBER} -
+        }
+    }
+}
+
+$ until curl -s -o /dev/null -w "%{http_code}" http://localhost:61123/alive.html | grep -q "404"; do \
+    echo "Waiting for server to start..."; \
+    sleep 0.1; \
+done
+*
+
+$ echo "Hello, world!" > index.html
+*
+
+$ echo "Other file" > other.html
+*
+
+$ curl -s http://localhost:61123/index.html
+%EXIT any
+! Hello, world!
+
+$ curl -s http://localhost:61123/other.html
+%EXIT any
+! Other file

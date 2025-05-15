@@ -55,8 +55,17 @@ impl CommandLine {
         };
         command.arg(&self.command);
         command.envs(envs);
+        if let Some(pwd) = envs.get("PWD") {
+            command.current_dir(pwd);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
+        command.stdin(Stdio::null());
         let mut output = command.spawn().map_err(|e| {
             std::io::Error::new(
                 e.kind(),
@@ -117,12 +126,40 @@ impl CommandLine {
         });
 
         let res = kill_receiver.run_cmd(output)?;
-        stdout.join().map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::Other, "stdout thread panicked")
-        })?;
-        stderr.join().map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::Other, "stderr thread panicked")
-        })?;
+        let join_start = std::time::Instant::now();
+        let mut stdout_holder = Some(stdout);
+        let mut stderr_holder = Some(stderr);
+        loop {
+            if stdout_holder.is_none() && stderr_holder.is_none() {
+                break;
+            }
+            if join_start.elapsed() > std::time::Duration::from_secs(30) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "process took too long to join",
+                ));
+            }
+
+            if let Some(stdout) = stdout_holder.take() {
+                if stdout.is_finished() {
+                    stdout.join().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::Other, "stdout thread panicked")
+                    })?;
+                } else {
+                    stdout_holder = Some(stdout);
+                }
+            }
+            if let Some(stderr) = stderr_holder.take() {
+                if stderr.is_finished() {
+                    stderr.join().map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::Other, "stderr thread panicked")
+                    })?;
+                } else {
+                    stderr_holder = Some(stderr);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
 
         let output_lines = Arc::try_unwrap(output_lines).map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::Other, "output lines still locked")

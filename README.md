@@ -49,6 +49,14 @@ The test files use the following syntax:
 - `reject { ... }` - Fail if any output matches the enclosed patterns
 - `*` - Match any output, lazily (completes when the next structure matches)
 - `if <condition> { ... }` - Run the enclosed patterns if the condition is true
+  (eg: `if $TARGET_OS == "linux"` or `if $TARGET_ARCH != "arm"`)
+
+### Special modifiers
+
+- `%SET <var>` - Set the variable to the output of the command (`PWD` is special
+  and controls the current working directory)
+- `%EXIT <n|any>` - Expect exit with the given exit code (or any if `any` is used)
+- `%EXPECT_FAILURE` - Expect the pattern match to fail (and fail the test if it succeeds)
 
 ## Examples
 
