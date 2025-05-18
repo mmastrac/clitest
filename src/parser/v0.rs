@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::{
     command::CommandLine,
     script::{
-        CommandExit, ForCondition, GrokPattern, IfCondition, OutputPattern, OutputPatternType,
-        Script, ScriptBlock, ScriptCommand, ScriptError, ScriptErrorType, ScriptFile, ScriptLine,
-        ScriptLocation,
+        CommandExit, ForCondition, GrokPattern, IfCondition, InternalCommand, OutputPattern,
+        OutputPatternType, Script, ScriptBlock, ScriptCommand, ScriptError, ScriptErrorType,
+        ScriptFile, ScriptLine, ScriptLocation,
     },
 };
 
@@ -110,6 +110,7 @@ impl std::fmt::Debug for ScriptV0Block {
 enum ScriptV0Segment {
     Block(ScriptV0Block),
     SubBlock(ScriptLocation, String, Vec<String>, Vec<ScriptV0Segment>),
+    Semi(ScriptLocation, String, Vec<String>),
 }
 
 impl std::fmt::Debug for ScriptV0Segment {
@@ -128,6 +129,10 @@ impl std::fmt::Debug for ScriptV0Segment {
                     writeln!(f, "{indent_str}}}")?;
                     Ok(())
                 }
+                ScriptV0Segment::Semi(location, text, args) => {
+                    writeln!(f, "{indent_str}:{} {text:?}{args:?};", location.line)?;
+                    Ok(())
+                }
             }
         } else {
             match self {
@@ -144,6 +149,12 @@ impl std::fmt::Debug for ScriptV0Segment {
                     .field("args", &args)
                     .field("segments", &segments)
                     .finish(),
+                ScriptV0Segment::Semi(location, text, args) => f
+                    .debug_struct("Semi")
+                    .field("location", &location)
+                    .field("text", &text)
+                    .field("args", &args)
+                    .finish(),
             }
         }
     }
@@ -157,9 +168,11 @@ impl ScriptV0Segment {
                 text != "*"
                     && (segments.is_empty() || segments.iter().all(|segment| segment.is_empty()))
             }
+            ScriptV0Segment::Semi(..) => false,
         }
     }
 
+    /// Used by wildcard handling.
     fn split_first(&mut self) -> Option<Self> {
         match self {
             ScriptV0Segment::Block(block) => block.split_first().map(ScriptV0Segment::Block),
@@ -177,6 +190,7 @@ impl ScriptV0Segment {
                     ))
                 }
             }
+            ScriptV0Segment::Semi(..) => None,
         }
     }
 
@@ -189,6 +203,7 @@ impl ScriptV0Segment {
             ScriptV0Segment::SubBlock(.., segments) => {
                 segments.iter().any(|segment| segment.is_command_block())
             }
+            ScriptV0Segment::Semi(..) => true,
         }
     }
 
@@ -203,6 +218,7 @@ impl ScriptV0Segment {
         match self {
             ScriptV0Segment::Block(block) => &block.location,
             ScriptV0Segment::SubBlock(location, ..) => location,
+            ScriptV0Segment::Semi(location, ..) => location,
         }
     }
 
@@ -216,6 +232,7 @@ impl ScriptV0Segment {
                     location
                 }
             }
+            ScriptV0Segment::Semi(location, ..) => location,
         }
     }
 }
@@ -236,22 +253,18 @@ fn segment_script(
     let mut segments = Vec::new();
     let mut current_segment = None;
 
-    fn is_subblock(text: &str) -> Option<(&str, &str)> {
+    fn is_subblock(text: &str) -> Option<(bool, &str, &str)> {
         // Workaround for missing let chains
-        if text
-            .chars()
-            .into_iter()
-            .next()
-            .unwrap_or_default()
-            .is_alphabetic()
-        {
-            text.strip_suffix("{").map(|text| {
-                if let Some((block_type, args)) = text.trim().split_once(char::is_whitespace) {
-                    (block_type.trim(), args.trim())
-                } else {
-                    (text.trim(), "")
-                }
-            })
+        if text.starts_with(|c: char| c.is_alphabetic()) {
+            let is_semi = text.ends_with(';');
+            text.strip_suffix(|c: char| c == '{' || c == ';')
+                .map(|text| {
+                    if let Some((block_type, args)) = text.trim().split_once(char::is_whitespace) {
+                        (is_semi, block_type.trim(), args.trim())
+                    } else {
+                        (is_semi, text.trim(), "")
+                    }
+                })
         } else {
             None
         }
@@ -308,17 +321,9 @@ fn segment_script(
                 lines: block_lines,
                 location: line.location.clone(),
             }));
-        } else if let Some((block_type, args)) = is_subblock(line.text()) {
+        } else if let Some((is_semi, block_type, args)) = is_subblock(line.text()) {
             if let Some(segment) = current_segment.take() {
                 segments.push(ScriptV0Segment::Block(segment));
-            }
-            // Temporaraliy swap from iterator to slice
-            let mut rest = lines.as_slice();
-            if rest.is_empty() {
-                return Err(ScriptError::new(
-                    ScriptErrorType::InvalidBlockEnd,
-                    line.location.clone(),
-                ));
             }
 
             let args = shellish_parse::parse(&args, shellish_parse::ParseOptions::default())
@@ -343,13 +348,30 @@ fn segment_script(
                 })
                 .collect();
 
-            segments.push(ScriptV0Segment::SubBlock(
-                line.location.clone(),
-                block_type.to_string(),
-                args,
-                segment_script(false, &mut rest)?,
-            ));
-            lines = rest.into_iter();
+            if is_semi {
+                segments.push(ScriptV0Segment::Semi(
+                    line.location.clone(),
+                    block_type.to_string(),
+                    args,
+                ));
+            } else {
+                // Temporaraliy swap from iterator to slice
+                let mut rest = lines.as_slice();
+                if rest.is_empty() {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidBlockEnd,
+                        line.location.clone(),
+                    ));
+                }
+
+                segments.push(ScriptV0Segment::SubBlock(
+                    line.location.clone(),
+                    block_type.to_string(),
+                    args,
+                    segment_script(false, &mut rest)?,
+                ));
+                lines = rest.into_iter();
+            }
         } else if line.text() == "}" {
             // Note that the closing brace is not included in the current
             // segment, we omit these lines from the segment tree.
@@ -457,6 +479,9 @@ fn normalize_segments(segments: Vec<ScriptV0Segment>) -> Vec<ScriptV0Segment> {
             ScriptV0Segment::SubBlock(location, text, args, segments) => {
                 let normalized = normalize_segments(segments);
                 new_segments.push(ScriptV0Segment::SubBlock(location, text, args, normalized));
+            }
+            ScriptV0Segment::Semi(location, text, args) => {
+                new_segments.push(ScriptV0Segment::Semi(location, text, args));
             }
         }
     }
@@ -636,6 +661,43 @@ fn parse_normalized_script_v0_commands(
 
             segments = remaining;
             continue;
+        }
+
+        if let ScriptV0Segment::Semi(location, text, args) = command {
+            segments = remaining;
+            if text == "using" {
+                if args.len() == 1 && args[0] == "tempdir" {
+                    commands.push(ScriptBlock::InternalCommand(InternalCommand::UsingTempdir));
+                    continue;
+                }
+                if args.len() == 2 && args[0] == "dir" {
+                    commands.push(ScriptBlock::InternalCommand(InternalCommand::UsingDir(
+                        args[1].clone(),
+                        false,
+                    )));
+                    continue;
+                }
+                if args.len() == 3 && args[0] == "new" && args[1] == "dir" {
+                    commands.push(ScriptBlock::InternalCommand(InternalCommand::UsingDir(
+                        args[2].clone(),
+                        true,
+                    )));
+                    continue;
+                }
+            }
+            if text == "cd" {
+                if args.len() == 1 {
+                    commands.push(ScriptBlock::InternalCommand(InternalCommand::ChangeDir(
+                        args[0].clone(),
+                    )));
+                    continue;
+                }
+            }
+            return Err(ScriptError::new_with_data(
+                ScriptErrorType::InvalidInternalCommand,
+                location.clone(),
+                format!("{text} {args:?}"),
+            ));
         }
 
         let next_command = remaining
@@ -898,6 +960,13 @@ fn parse_script_v0_segment(
                 };
                 builder.patterns.push(pattern);
             }
+        }
+        ScriptV0Segment::Semi(location, text, args) => {
+            return Err(ScriptError::new_with_data(
+                ScriptErrorType::UnsupportedCommandPosition,
+                location.clone(),
+                format!("{text} {args:?}"),
+            ));
         }
     }
     Ok(())

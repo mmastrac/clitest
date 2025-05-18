@@ -1,0 +1,16 @@
+#!/usr/bin/env clitest --v0
+
+using tempdir;
+
+using new dir "subdir";
+
+$ touch foo
+
+cd ..;
+
+$ find .
+! .
+! ./subdir
+! ./subdir/foo
+
+

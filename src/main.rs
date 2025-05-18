@@ -84,7 +84,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 script,
             })
         })
-        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>();
+
+    let script_files = match script_files {
+        Ok(s) => s,
+        Err(e) => {
+            cprint!(fg = Color::Red, "Error:");
+            cprintln!(" {e}");
+            std::process::exit(1);
+        }
+    };
 
     if let Some(format) = args.dump {
         let s = script_files

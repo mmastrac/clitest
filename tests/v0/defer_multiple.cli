@@ -1,0 +1,15 @@
+#!/usr/bin/env clitest --v0
+
+defer {
+    $ echo 1a
+    ! 1a
+    $ echo 1b
+    ! 1b
+}
+
+defer {
+    $ echo 2a
+    ! 2a
+    $ echo 2b
+    ! 2b
+}

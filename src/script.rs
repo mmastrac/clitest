@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     process::ExitStatus,
     sync::{Arc, Mutex, atomic::AtomicBool},
@@ -252,6 +252,14 @@ impl ScriptRunContext {
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
         }
+    }
+
+    pub fn pwd(&self) -> PathBuf {
+        self.envs
+            .get("PWD")
+            .map(|s| s.clone())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().expect("Couldn't get current directory"))
     }
 }
 
@@ -568,6 +576,8 @@ pub enum ScriptErrorType {
     InvalidSetVariable,
     #[error("invalid version")]
     InvalidVersion,
+    #[error("invalid internal command")]
+    InvalidInternalCommand,
     #[error("missing command lines")]
     MissingCommandLines,
     #[error(
@@ -1161,9 +1171,10 @@ impl CommandExit {
     }
 }
 
-#[derive(Debug)]
+#[derive(derive_more::Debug)]
 pub enum ScriptBlock {
     Command(ScriptCommand),
+    InternalCommand(InternalCommand),
     Background(Vec<ScriptBlock>),
     Defer(Vec<ScriptBlock>),
     If(IfCondition, Vec<ScriptBlock>),
@@ -1177,7 +1188,10 @@ impl ScriptBlock {
     ) -> Result<Vec<ScriptResult>, ScriptRunError> {
         let mut results = Vec::new();
         std::thread::scope(|s| {
-            let mut defer_blocks = Vec::new();
+            let mut defer_blocks = VecDeque::new();
+            let mut internal_deferred: VecDeque<
+                Box<dyn FnOnce(&mut ScriptRunContext) -> Result<(), ScriptRunError> + Send + Sync>,
+            > = VecDeque::new();
             let mut background = Vec::new();
             let mut pending_error = None;
             for block in blocks {
@@ -1193,8 +1207,107 @@ impl ScriptBlock {
                         background.push((handle, kill_sender));
                     }
                     ScriptBlock::Defer(blocks) => {
+                        // Insert at the front of the queue by extending and
+                        // then rotating
                         defer_blocks.extend(blocks);
+                        defer_blocks.rotate_left(blocks.len());
                     }
+                    ScriptBlock::InternalCommand(command) => match command {
+                        InternalCommand::UsingTempdir => {
+                            let current_pwd = context.pwd();
+                            let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
+                            if !context.args.quiet {
+                                cprint!(fg = Color::Yellow, "using tempdir: ");
+                                cprintln!("{}", tempdir.path().to_string_lossy());
+                                cprintln!();
+                            }
+                            context.envs.insert(
+                                "PWD".to_string(),
+                                tempdir.path().to_string_lossy().to_string(),
+                            );
+                            internal_deferred.insert(
+                                0,
+                                Box::new(move |context: &mut ScriptRunContext| {
+                                    if !context.args.quiet {
+                                        cprintln!(
+                                            fg = Color::Yellow,
+                                            "removing {} && cd {}",
+                                            tempdir.path().to_string_lossy(),
+                                            current_pwd.to_string_lossy()
+                                        );
+                                        cprintln!();
+                                    }
+                                    std::fs::remove_dir_all(&tempdir)?;
+                                    drop(tempdir);
+                                    Ok::<_, ScriptRunError>(())
+                                }),
+                            );
+                        }
+                        InternalCommand::UsingDir(dir, new) => {
+                            let current_pwd = context.pwd();
+                            let new_pwd = current_pwd.join(dir);
+                            if !context.args.quiet {
+                                if *new {
+                                    cprint!(fg = Color::Yellow, "using new dir: ");
+                                } else {
+                                    cprint!(fg = Color::Yellow, "using dir: ");
+                                }
+                                cprintln!("{}", new_pwd.to_string_lossy());
+                                cprintln!();
+                            }
+
+                            if *new {
+                                std::fs::create_dir_all(&new_pwd)?;
+                            } else {
+                                if !new_pwd.exists() {
+                                    return Err(ScriptRunError::IO(std::io::Error::new(
+                                        std::io::ErrorKind::NotFound,
+                                        "directory does not exist",
+                                    )));
+                                }
+                            }
+                            context
+                                .envs
+                                .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                            internal_deferred.insert(
+                                0,
+                                Box::new(move |context: &mut ScriptRunContext| {
+                                    if !context.args.quiet {
+                                        if *new {
+                                            cprintln!(
+                                                fg = Color::Yellow,
+                                                "removing {} && cd {}",
+                                                new_pwd.to_string_lossy(),
+                                                current_pwd.to_string_lossy()
+                                            );
+                                        } else {
+                                            cprintln!(
+                                                fg = Color::Yellow,
+                                                "cd {}",
+                                                current_pwd.to_string_lossy()
+                                            );
+                                        }
+                                        cprintln!();
+                                    }
+                                    if *new {
+                                        std::fs::remove_dir_all(&new_pwd)?;
+                                    }
+                                    context.envs.insert(
+                                        "PWD".to_string(),
+                                        current_pwd.to_string_lossy().to_string(),
+                                    );
+                                    Ok::<_, ScriptRunError>(())
+                                }),
+                            );
+                        }
+                        InternalCommand::ChangeDir(dir) => {
+                            let current_pwd = context.pwd();
+                            let new_pwd = current_pwd.join(dir);
+                            context
+                                .envs
+                                .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                        }
+                    },
                     _ => match block.run(context) {
                         Ok(res) => results.extend(res),
                         Err(e) => {
@@ -1254,6 +1367,12 @@ impl ScriptBlock {
                 }
                 block.run(context)?;
             }
+            for deferred in internal_deferred {
+                if !context.args.quiet {
+                    cprint!(dimmed = true, "(cleanup) ");
+                }
+                deferred(context)?;
+            }
             if let Some(error) = pending_error {
                 return Err(error);
             }
@@ -1299,6 +1418,7 @@ impl Serialize for ScriptBlock {
     {
         match self {
             ScriptBlock::Command(command) => command.serialize(serializer),
+            ScriptBlock::InternalCommand(command) => command.serialize(serializer),
             ScriptBlock::Background(blocks) => {
                 let mut ser = serializer.serialize_map(Some(1))?;
                 ser.serialize_entry("background", blocks)?;
@@ -1321,8 +1441,16 @@ impl Serialize for ScriptBlock {
                 ser.serialize_entry("blocks", blocks)?;
                 ser.end()
             }
+            _ => unreachable!(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum InternalCommand {
+    UsingTempdir,
+    UsingDir(String, bool),
+    ChangeDir(String),
 }
 
 #[derive(Debug, Clone)]

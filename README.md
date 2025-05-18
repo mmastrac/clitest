@@ -122,9 +122,7 @@ $ echo "a\nb\nc"
 ! wrong
 ```
 
-# CLI Test Format Manual
-
-This document describes the format and features of the CLI test system.
+# Extended Reference
 
 ## Basic Syntax
 
@@ -142,6 +140,21 @@ Commands are prefixed with `$`:
 $ echo "Hello World"
 ```
 
+Internal commands can be used to control the test environment. They do not use a
+`$` prefix and must end with a semicolon:
+
+```bash
+using tempdir;
+using dir "subdir";
+using new dir "subdir";
+cd "subdir";
+```
+
+ - `using tempdir` - Use a temporary directory for the test, tearing it down after the block ends
+ - `using dir <path>` - Use the given directory for the test, leaving it in place after the block ends
+ - `using new dir <path>` - Create a new directory for the test, tearing it down after the block ends
+ - `cd <path>` - Change the current working directory from this point forward
+
 ## Output Matching
 
 ### Pattern Matching
@@ -154,7 +167,8 @@ There are two types of pattern matching:
    - Example:
      ```bash
      $ printf "[LOG] Hello, world!\n"
-     ! [LOG] %{GREEDYDATA}  # [LOG] is treated literally, %{GREEDYDATA} matches any text
+     # [LOG] is treated literally, %{GREEDYDATA} matches any text
+     ! [LOG] %{GREEDYDATA}
      ```
 
 2. `?` (Raw patterns):
@@ -163,7 +177,8 @@ There are two types of pattern matching:
    - Example:
      ```bash
      $ printf "[LOG] Hello, world!\n"
-     ? \[LOG\] %{GREEDYDATA}  # \[LOG\] matches [LOG] literally
+     # \[LOG\] matches [LOG] literally
+     ? \[LOG\] %{GREEDYDATA}
      ```
 
 ### Multi-line Output
@@ -187,6 +202,7 @@ The `repeat` block allows matching repeated patterns:
 
 ```bash
 $ printf "a\nb\nc\n"
+# Match a repeating sequence of one of a, b, or c
 repeat {
     choice {
         ! a
@@ -201,6 +217,7 @@ repeat {
 The `choice` block matches any one of the specified patterns:
 
 ```bash
+# Match one of pattern1, pattern2, or pattern3
 choice {
     ! pattern1
     ! pattern2
@@ -295,13 +312,3 @@ $ printf "value\n"
 - Use `%{DATA}` to match any text in patterns
 - Use `%{GREEDYDATA}` to match any text greedily
 - Use `*` to match any output lazily (completes when the next structure matches)
-
-## Best Practices
-
-1. Use `!!!` or `???` for multi-line output matching
-2. Use `!` for patterns where you want literal matching of non-grok parts
-3. Use `?` for patterns where you need full control over escaping
-4. Use appropriate control structures for complex output matching
-5. Set up environment variables when needed for test consistency
-6. Use `defer` blocks to clean up temporary resources
-7. Use `PWD` to control the working directory when needed
