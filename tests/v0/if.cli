@@ -12,9 +12,8 @@ if false {
     *
 }
 
-$ printf "1\n" # setting x
-%SET x
-*
+set x 1;
+set y 1;
 
 if x == 1 {
     # This should print
@@ -31,5 +30,10 @@ if x == 2 {
 if x != 2 {
     # This should print
     $ printf "x is not 2\n"
+    *
+}
+
+if x == $y {
+    $ printf "x is equal to y\n"
     *
 }

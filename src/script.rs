@@ -1453,6 +1453,7 @@ impl ScriptBlock {
                 }
             }
             ScriptBlock::If(condition, blocks) => {
+                let condition = condition.expand(context)?;
                 if condition.matches(context) {
                     Self::run_blocks(context, blocks)
                 } else {
@@ -1649,6 +1650,17 @@ impl IfCondition {
                     .map(|s| s.as_str())
                     .unwrap_or_default();
                 (value == expected) ^ negated
+            }
+        }
+    }
+
+    pub fn expand(&self, context: &ScriptRunContext) -> Result<IfCondition, ScriptRunError> {
+        match self {
+            IfCondition::True => Ok(IfCondition::True),
+            IfCondition::False => Ok(IfCondition::False),
+            IfCondition::EnvEq(negated, name, expected) => {
+                let value = context.expand(expected)?;
+                Ok(IfCondition::EnvEq(*negated, name.clone(), value))
             }
         }
     }
