@@ -6,8 +6,6 @@ use clitest::{
 };
 
 fn main() {
-    term::ensure_panic_hook();
-
     let mut total = 0;
     let mut failed = 0;
     cprintln!();

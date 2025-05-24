@@ -1,4 +1,4 @@
-use grok::Grok;
+use grok2::Grok;
 use std::sync::Arc;
 
 use crate::{
@@ -689,6 +689,15 @@ fn parse_normalized_script_v0_commands(
                 if args.len() == 1 {
                     commands.push(ScriptBlock::InternalCommand(InternalCommand::ChangeDir(
                         args[0].clone(),
+                    )));
+                    continue;
+                }
+            }
+            if text == "set" {
+                if args.len() == 2 {
+                    commands.push(ScriptBlock::InternalCommand(InternalCommand::Set(
+                        args[0].clone(),
+                        args[1].clone(),
                     )));
                     continue;
                 }

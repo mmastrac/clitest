@@ -1,0 +1,14 @@
+#!/usr/bin/env clitest --v0
+
+set FOO bar;
+
+$ echo $FOO
+! bar
+
+set A 1;
+set B 2;
+
+set FOO "$A $B";
+
+$ echo $FOO
+! 1 2

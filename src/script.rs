@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use grok2 as grok;
 use grok::Grok;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::Color;
@@ -261,6 +262,119 @@ impl ScriptRunContext {
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_dir().expect("Couldn't get current directory"))
     }
+
+    /// Perform shell expansion on a string.
+    fn expand(&self, value: String) -> Result<String, ScriptRunError> {
+        enum State {
+            Normal,
+            EscapeNext,
+            InCurly,
+            Dollar,
+            InDollar,
+        }
+
+        // "\" triggers escaping
+        // ${A} expands to the value of A
+        // $A expands to the value of A (variable ends on first non-alphanumeric character)
+
+        let mut state = State::Normal;
+        let mut variable = String::new();
+        let mut expanded = String::new();
+
+        for c in value.chars() {
+            match state {
+                State::Normal => {
+                    if c == '$' {
+                        state = State::Dollar;
+                        continue;
+                    }
+                    if c == '\\' {
+                        state = State::EscapeNext;
+                        continue;
+                    }
+                    expanded.push(c);
+                }
+                State::EscapeNext => {
+                    expanded.push(c);
+                    state = State::Normal;
+                }
+                State::InCurly => {
+                    if c == '}' {
+                        if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
+                            expanded.push_str(value);
+                        } else {
+                            return Err(ScriptRunError::ExpansionError(format!(
+                                "undefined variable in ${{...}}: {}",
+                                variable
+                            )));
+                        }
+                        state = State::Normal;
+                    } else {
+                        variable.push(c);
+                    }
+                }
+                State::Dollar => {
+                    if c.is_alphanumeric() {
+                        state = State::InDollar;
+                        variable.push(c);
+                    } else if c == '{' {
+                        state = State::InCurly;
+                    } else {
+                        return Err(ScriptRunError::ExpansionError(format!(
+                            "invalid variable: {}",
+                            c
+                        )));
+                    }
+                }
+                State::InDollar => {
+                    if c.is_alphanumeric() {
+                        variable.push(c);
+                    } else {
+                        if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
+                            expanded.push_str(value);
+                        } else {
+                            return Err(ScriptRunError::ExpansionError(format!(
+                                "undefined variable in $...: {}",
+                                variable
+                            )));
+                        }
+                        expanded.push(c);
+                        state = State::Normal;
+                    }
+                }
+            }
+        }
+        match state {
+            State::InDollar => {
+                if let Some(value) = self.envs.get(&variable) {
+                    expanded.push_str(value);
+                } else {
+                    return Err(ScriptRunError::ExpansionError(format!(
+                        "undefined variable: {}",
+                        variable
+                    )));
+                }
+            }
+            State::Dollar => {
+                return Err(ScriptRunError::ExpansionError(format!(
+                    "incomplete variable"
+                )));
+            }
+            State::InCurly => {
+                return Err(ScriptRunError::ExpansionError(format!(
+                    "unclosed variable: {}",
+                    variable
+                )));
+            }
+            State::Normal => {}
+            State::EscapeNext => {
+                return Err(ScriptRunError::ExpansionError(format!(
+                    "unclosed backslash"
+                )));
+            }
+        }
+        Ok(expanded)
+    }
 }
 
 pub struct ScriptKillReceiver {
@@ -447,6 +561,8 @@ impl ScriptRunContext {
                 .to_string_lossy()
                 .to_string(),
         );
+        // Save the initial PWD as INITIAL_PWD so it can easily be restored
+        envs.insert("INITIAL_PWD".to_string(), envs["PWD"].clone());
 
         let kill = Arc::new(AtomicBool::new(false));
 
@@ -819,7 +935,7 @@ impl GrokPattern {
         grok: &mut Grok,
         line: &str,
         escape_non_grok: bool,
-    ) -> Result<Self, grok::Error> {
+    ) -> Result<Self, grok2::Error> {
         if escape_non_grok {
             // Borrowed from grok crate
             const GROK_PATTERN: &str = r"%\{(?<name>(?<pattern>[A-z0-9]+)(?::(?<alias>[A-z0-9_:;\/\s\.]+))?)(?:=(?<definition>(?:(?:[^{}]+|\.+)+)+))?\}";
@@ -875,6 +991,8 @@ pub enum ScriptRunError {
     #[error("expected failure, but passed")]
     ExpectedFailure,
     #[error("{0}")]
+    ExpansionError(String),
+    #[error("{0}")]
     IO(#[from] std::io::Error),
     #[error("killed")]
     Killed,
@@ -892,6 +1010,7 @@ impl ScriptRunError {
             Self::IO(e) => format!("IO({:?})", e.kind()),
             Self::Killed => "Killed".to_string(),
             Self::BackgroundProcessTookTooLong => "BackgroundProcessTookTooLong".to_string(),
+            Self::ExpansionError(e) => "ExpansionError".to_string(),
         }
     }
 }
@@ -1186,12 +1305,21 @@ impl ScriptBlock {
         context: &mut ScriptRunContext,
         blocks: &[ScriptBlock],
     ) -> Result<Vec<ScriptResult>, ScriptRunError> {
+        enum Deferred<'a> {
+            Script(&'a ScriptBlock),
+            Internal(
+                Box<
+                    dyn FnOnce(&mut ScriptRunContext) -> Result<(), ScriptRunError>
+                        + Send
+                        + Sync
+                        + 'a,
+                >,
+            ),
+        }
+
         let mut results = Vec::new();
         std::thread::scope(|s| {
             let mut defer_blocks = VecDeque::new();
-            let mut internal_deferred: VecDeque<
-                Box<dyn FnOnce(&mut ScriptRunContext) -> Result<(), ScriptRunError> + Send + Sync>,
-            > = VecDeque::new();
             let mut background = Vec::new();
             let mut pending_error = None;
             for block in blocks {
@@ -1209,105 +1337,16 @@ impl ScriptBlock {
                     ScriptBlock::Defer(blocks) => {
                         // Insert at the front of the queue by extending and
                         // then rotating
-                        defer_blocks.extend(blocks);
+                        for block in blocks {
+                            defer_blocks.push_back(Deferred::Script(block));
+                        }
                         defer_blocks.rotate_left(blocks.len());
                     }
-                    ScriptBlock::InternalCommand(command) => match command {
-                        InternalCommand::UsingTempdir => {
-                            let current_pwd = context.pwd();
-                            let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
-                            if !context.args.quiet {
-                                cprint!(fg = Color::Yellow, "using tempdir: ");
-                                cprintln!("{}", tempdir.path().to_string_lossy());
-                                cprintln!();
-                            }
-                            context.envs.insert(
-                                "PWD".to_string(),
-                                tempdir.path().to_string_lossy().to_string(),
-                            );
-                            internal_deferred.insert(
-                                0,
-                                Box::new(move |context: &mut ScriptRunContext| {
-                                    if !context.args.quiet {
-                                        cprintln!(
-                                            fg = Color::Yellow,
-                                            "removing {} && cd {}",
-                                            tempdir.path().to_string_lossy(),
-                                            current_pwd.to_string_lossy()
-                                        );
-                                        cprintln!();
-                                    }
-                                    std::fs::remove_dir_all(&tempdir)?;
-                                    drop(tempdir);
-                                    Ok::<_, ScriptRunError>(())
-                                }),
-                            );
+                    ScriptBlock::InternalCommand(command) => {
+                        if let Some(f) = command.run(context)? {
+                            defer_blocks.insert(0, Deferred::Internal(f));
                         }
-                        InternalCommand::UsingDir(dir, new) => {
-                            let current_pwd = context.pwd();
-                            let new_pwd = current_pwd.join(dir);
-                            if !context.args.quiet {
-                                if *new {
-                                    cprint!(fg = Color::Yellow, "using new dir: ");
-                                } else {
-                                    cprint!(fg = Color::Yellow, "using dir: ");
-                                }
-                                cprintln!("{}", new_pwd.to_string_lossy());
-                                cprintln!();
-                            }
-
-                            if *new {
-                                std::fs::create_dir_all(&new_pwd)?;
-                            } else {
-                                if !new_pwd.exists() {
-                                    return Err(ScriptRunError::IO(std::io::Error::new(
-                                        std::io::ErrorKind::NotFound,
-                                        "directory does not exist",
-                                    )));
-                                }
-                            }
-                            context
-                                .envs
-                                .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
-                            internal_deferred.insert(
-                                0,
-                                Box::new(move |context: &mut ScriptRunContext| {
-                                    if !context.args.quiet {
-                                        if *new {
-                                            cprintln!(
-                                                fg = Color::Yellow,
-                                                "removing {} && cd {}",
-                                                new_pwd.to_string_lossy(),
-                                                current_pwd.to_string_lossy()
-                                            );
-                                        } else {
-                                            cprintln!(
-                                                fg = Color::Yellow,
-                                                "cd {}",
-                                                current_pwd.to_string_lossy()
-                                            );
-                                        }
-                                        cprintln!();
-                                    }
-                                    if *new {
-                                        std::fs::remove_dir_all(&new_pwd)?;
-                                    }
-                                    context.envs.insert(
-                                        "PWD".to_string(),
-                                        current_pwd.to_string_lossy().to_string(),
-                                    );
-                                    Ok::<_, ScriptRunError>(())
-                                }),
-                            );
-                        }
-                        InternalCommand::ChangeDir(dir) => {
-                            let current_pwd = context.pwd();
-                            let new_pwd = current_pwd.join(dir);
-                            context
-                                .envs
-                                .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
-                        }
-                    },
+                    }
                     _ => match block.run(context) {
                         Ok(res) => results.extend(res),
                         Err(e) => {
@@ -1362,16 +1401,20 @@ impl ScriptBlock {
                 }
             }
             for block in defer_blocks {
-                if !context.args.quiet {
-                    cprint!(dimmed = true, "(deferred) ");
+                match block {
+                    Deferred::Script(block) => {
+                        if !context.args.quiet {
+                            cprint!(dimmed = true, "(deferred) ");
+                        }
+                        block.run(context)?;
+                    }
+                    Deferred::Internal(block) => {
+                        if !context.args.quiet {
+                            cprint!(dimmed = true, "(cleanup) ");
+                        }
+                        block(context)?;
+                    }
                 }
-                block.run(context)?;
-            }
-            for deferred in internal_deferred {
-                if !context.args.quiet {
-                    cprint!(dimmed = true, "(cleanup) ");
-                }
-                deferred(context)?;
             }
             if let Some(error) = pending_error {
                 return Err(error);
@@ -1381,6 +1424,20 @@ impl ScriptBlock {
     }
 
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<Vec<ScriptResult>, ScriptRunError> {
+        let pwd = context.pwd();
+        if !matches!(std::fs::exists(&pwd), Ok(true)) {
+            if !context.args.quiet {
+                cprintln!(
+                    fg = Color::Red,
+                    "$PWD {pwd:?} doesn't exist, returning to $INITIAL_PWD {:?}. Run `cd $INITIAL_PWD` to fix.",
+                    context.envs["INITIAL_PWD"]
+                );
+            }
+            context
+                .envs
+                .insert("PWD".to_string(), context.envs["INITIAL_PWD"].clone());
+        }
+
         match self {
             ScriptBlock::Command(command) => {
                 let result = command.run(context)?;
@@ -1451,6 +1508,122 @@ pub enum InternalCommand {
     UsingTempdir,
     UsingDir(String, bool),
     ChangeDir(String),
+    Set(String, String),
+}
+
+impl InternalCommand {
+    pub fn run(
+        &self,
+        context: &mut ScriptRunContext,
+    ) -> Result<
+        Option<Box<dyn FnOnce(&mut ScriptRunContext) -> Result<(), ScriptRunError> + Send + Sync>>,
+        ScriptRunError,
+    > {
+        match self.clone() {
+            InternalCommand::UsingTempdir => {
+                let current_pwd = context.pwd();
+                let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
+                if !context.args.quiet {
+                    cprint!(fg = Color::Yellow, "using tempdir: ");
+                    cprintln!("{}", tempdir.path().to_string_lossy());
+                    cprintln!();
+                }
+                context.envs.insert(
+                    "PWD".to_string(),
+                    tempdir.path().to_string_lossy().to_string(),
+                );
+                Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
+                    if !context.args.quiet {
+                        cprintln!(
+                            fg = Color::Yellow,
+                            "removing {} && cd {}",
+                            tempdir.path().to_string_lossy(),
+                            current_pwd.to_string_lossy()
+                        );
+                        cprintln!();
+                    }
+                    std::fs::remove_dir_all(&tempdir)?;
+                    drop(tempdir);
+                    Ok::<_, ScriptRunError>(())
+                })))
+            }
+            InternalCommand::UsingDir(dir, new) => {
+                let current_pwd = context.pwd();
+                let dir = context.expand(dir)?;
+                let new_pwd = current_pwd.join(dir);
+                if !context.args.quiet {
+                    if new {
+                        cprint!(fg = Color::Yellow, "using new dir: ");
+                    } else {
+                        cprint!(fg = Color::Yellow, "using dir: ");
+                    }
+                    cprintln!("{}", new_pwd.to_string_lossy());
+                    cprintln!();
+                }
+
+                if new {
+                    std::fs::create_dir_all(&new_pwd)?;
+                } else {
+                    if !new_pwd.exists() {
+                        return Err(ScriptRunError::IO(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "directory does not exist",
+                        )));
+                    }
+                }
+                context
+                    .envs
+                    .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
+                    if !context.args.quiet {
+                        if new {
+                            cprintln!(
+                                fg = Color::Yellow,
+                                "removing {} && cd {}",
+                                new_pwd.to_string_lossy(),
+                                current_pwd.to_string_lossy()
+                            );
+                        } else {
+                            cprintln!(fg = Color::Yellow, "cd {}", current_pwd.to_string_lossy());
+                        }
+                        cprintln!();
+                    }
+                    if new {
+                        std::fs::remove_dir_all(&new_pwd)?;
+                    }
+                    context
+                        .envs
+                        .insert("PWD".to_string(), current_pwd.to_string_lossy().to_string());
+                    Ok::<_, ScriptRunError>(())
+                })))
+            }
+            InternalCommand::ChangeDir(dir) => {
+                let dir = context.expand(dir)?;
+
+                if !context.args.quiet {
+                    cprintln!(fg = Color::Yellow, "cd {dir}");
+                    cprintln!();
+                }
+                let current_pwd = context.pwd();
+                let new_pwd = current_pwd.join(dir);
+                context
+                    .envs
+                    .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                Ok(None)
+            }
+            InternalCommand::Set(name, value) => {
+                let value = context.expand(value)?;
+
+                if !context.args.quiet {
+                    cprintln!(fg = Color::Yellow, "set {name} {value}");
+                    cprintln!();
+                }
+
+                context.envs.insert(name.clone(), value);
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1726,5 +1899,32 @@ $ cmd &
             })
         ));
         Ok(())
+    }
+
+    #[test]
+    fn test_script_run_context_expand() {
+        let mut context = ScriptRunContext::new(ScriptRunArgs::default());
+        context.envs.insert("A".to_string(), "1".to_string());
+        context.envs.insert("B".to_string(), "2".to_string());
+        context.envs.insert("C".to_string(), "3".to_string());
+        assert_eq!(context.expand("$A".to_string()).unwrap(), "1".to_string());
+        assert_eq!(
+            context.expand("$A $B ".to_string()).unwrap(),
+            "1 2 ".to_string()
+        );
+        assert_eq!(
+            context.expand("${A} ${B} ".to_string()).unwrap(),
+            "1 2 ".to_string()
+        );
+        assert_eq!(
+            context.expand(r#"\$A"#.to_string()).unwrap(),
+            "$A".to_string()
+        );
+        assert_eq!(
+            context.expand(r#"\${A}"#.to_string()).unwrap(),
+            "${A}".to_string()
+        );
+        assert_eq!(context.expand(r#"\\$A"#.to_string()).unwrap(), r#"\1"#);
+        assert_eq!(context.expand(r#"\\${A}"#.to_string()).unwrap(), r#"\1"#);
     }
 }

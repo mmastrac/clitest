@@ -1,7 +1,7 @@
 [package]
 name = "clitest"
 license = "MIT/Apache-2.0"
-version = "0.1.15"
+version = "0.1.16"
 authors = ["Matt Mastracci <matthew@mastracci.com>"]
 edition = "2024"
 description = "CLI-based testing."
@@ -15,8 +15,8 @@ __testing = []
 clap = { version = "4.5", features = ["derive"] }
 shellish_parse = "2"
 thiserror = "2"
-grok = "2"
-onig = { version = "6.4", default-features = false }
+grok2 = "2"
+onig = { version = "6.5", default-features = false }
 derive_more = { version = "2", features = ["display", "debug", "is_variant", "unwrap"] }
 termcolor = "1"
 termsize = "0.1"

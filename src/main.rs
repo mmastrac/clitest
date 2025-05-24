@@ -63,8 +63,6 @@ struct ScriptToRun {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    term::ensure_panic_hook();
-
     let args = Args::parse();
 
     let script_files = args

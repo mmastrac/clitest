@@ -140,20 +140,71 @@ Commands are prefixed with `$`:
 $ echo "Hello World"
 ```
 
+## Internal Commands
+
 Internal commands can be used to control the test environment. They do not use a
-`$` prefix and must end with a semicolon:
+`$` prefix and must end with a semicolon.
+
+### Directory Management
+
+#### `using tempdir`
+Creates and uses a temporary directory for the test. The directory is automatically torn down after the block ends.
 
 ```bash
 using tempdir;
+```
+
+#### `using dir <path>`
+Uses the given directory for the test. The directory must exist and will be left in place after the block ends.
+
+```bash
 using dir "subdir";
+```
+
+#### `using new dir <path>`
+Creates a new directory for the test. The directory is automatically torn down after the block ends.
+
+```bash
 using new dir "subdir";
+```
+
+#### `cd <path>`
+Changes the current working directory from this point forward in the test.
+
+```bash
 cd "subdir";
 ```
 
- - `using tempdir` - Use a temporary directory for the test, tearing it down after the block ends
- - `using dir <path>` - Use the given directory for the test, leaving it in place after the block ends
- - `using new dir <path>` - Create a new directory for the test, tearing it down after the block ends
- - `cd <path>` - Change the current working directory from this point forward
+### Environment Variables
+
+#### `set <name> <value>`
+Sets an environment variable for the test. The variable can be referenced in subsequent commands.
+
+```bash
+set FOO bar;
+```
+
+#### Variable Escaping
+
+When referencing environment variables in internal commands, you can use different syntaxes:
+
+- `$VAR` - Basic variable reference (expands to the value of the variable)
+- `${VAR}` - Explicit variable reference (useful when variable name is followed by text)
+
+```bash
+set A 1;
+set B 2;
+set C "$A $B";
+$ echo $C
+! 1 2
+
+set DIR "subdir";
+
+using new dir "$DIR";
+
+$ echo $PWD
+! subdir
+```
 
 ## Output Matching
 

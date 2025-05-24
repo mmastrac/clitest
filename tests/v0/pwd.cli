@@ -24,9 +24,11 @@ defer {
     if TARGET_OS != "windows" {
         $ rm -rf $TEMP_DIR
     }
+
+    $ pwd
+    *
 }
 
-# Set PWD after we defer deletion to avoid being unable to delete the temp dir.
 $ echo $TEMP_DIR
 %SET PWD
 *
