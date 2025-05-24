@@ -19,7 +19,6 @@ $ printf "  X  \n"
   X
 ???
 
-
 $ printf "  X  \n"
 ???
 ^  X  $
@@ -36,3 +35,12 @@ $ printf "   X   \n"
 $ printf "   X   \n"
 %EXPECT_FAILURE
 ? ^  X  $
+
+$ printf "abc\n\ndef\n"
+# Indented !!! blocks strip indentation from their interior lines to match
+# Note that the empty line is actually empty (no indent)
+  !!!
+  abc
+
+  def
+  !!!

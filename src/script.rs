@@ -6,8 +6,8 @@ use std::{
     time::Duration,
 };
 
-use grok2 as grok;
 use grok::Grok;
+use grok2 as grok;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::Color;
 
@@ -1387,7 +1387,9 @@ impl ScriptBlock {
                 for result in results {
                     if !context.args.quiet {
                         cprint!(dimmed = true, "(background) ");
-                        cprintln!(fg = Color::Green, "{}", result.command.command);
+                        for line in result.command.command.split('\n') {
+                            cprintln!(fg = Color::Green, "{}", line);
+                        }
                         cprintln_rule!(fg = Color::Cyan, "{}", result.command.location);
                         for line in &result.output {
                             cprintln!("{}", line);
@@ -1706,7 +1708,9 @@ impl ScriptCommand {
         let args = &context.args;
 
         if !args.quiet {
-            cprintln!(fg = Color::Green, "{}", command.command);
+            for line in command.command.split('\n') {
+                cprintln!(fg = Color::Green, "{}", line);
+            }
             cprintln_rule!(fg = Color::Cyan, "{}", command.location);
         }
         let (output, status) = command.run(

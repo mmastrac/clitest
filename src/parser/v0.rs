@@ -812,6 +812,7 @@ fn parse_script_v0_segment(
             while let Some((line, rest)) = pattern.split_first() {
                 pattern = rest;
                 if line.text() == "!!!" {
+                    let indent = line.text_untrimmed().find("!!!").unwrap();
                     while let Some((line, rest)) = pattern.split_first() {
                         pattern = rest;
                         if line.text() == "!!!" {
@@ -820,12 +821,13 @@ fn parse_script_v0_segment(
                             builder.patterns.push(parse_pattern_line(
                                 grok,
                                 line.location.clone(),
-                                &line.text_untrimmed(),
+                                &line.text_untrimmed()[indent.min(line.text_untrimmed().len())..],
                                 '!',
                             )?);
                         }
                     }
                 } else if line.text() == "???" {
+                    let indent = line.text_untrimmed().find("???").unwrap();
                     while let Some((line, rest)) = pattern.split_first() {
                         pattern = rest;
                         if line.text() == "???" {
@@ -834,7 +836,7 @@ fn parse_script_v0_segment(
                             builder.patterns.push(parse_pattern_line(
                                 grok,
                                 line.location.clone(),
-                                &line.text_untrimmed(),
+                                &line.text_untrimmed()[indent.min(line.text_untrimmed().len())..],
                                 '?',
                             )?);
                         }
