@@ -4,3 +4,17 @@ for x in 1 2 3 {
     $ printf "$x\n"
     *
 }
+
+set A 1;
+set B 2;
+set C 3;
+
+for x in $A $B $C {
+    set LAST $x;
+
+    $ printf "$x\n"
+    *
+}
+
+$ echo $LAST
+! 3

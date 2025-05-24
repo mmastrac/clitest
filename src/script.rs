@@ -264,7 +264,7 @@ impl ScriptRunContext {
     }
 
     /// Perform shell expansion on a string.
-    fn expand(&self, value: String) -> Result<String, ScriptRunError> {
+    fn expand(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
         enum State {
             Normal,
             EscapeNext,
@@ -272,6 +272,8 @@ impl ScriptRunContext {
             Dollar,
             InDollar,
         }
+
+        let value = value.as_ref();
 
         // "\" triggers escaping
         // ${A} expands to the value of A
@@ -1460,7 +1462,7 @@ impl ScriptBlock {
             ScriptBlock::For(ForCondition::Env(env, values), blocks) => {
                 let mut results = Vec::new();
                 for value in values {
-                    context.envs.insert(env.clone(), value.clone());
+                    context.envs.insert(env.clone(), context.expand(value)?);
                     results.extend(Self::run_blocks(context, blocks)?);
                 }
                 Ok(results)
@@ -1911,24 +1913,12 @@ $ cmd &
         context.envs.insert("A".to_string(), "1".to_string());
         context.envs.insert("B".to_string(), "2".to_string());
         context.envs.insert("C".to_string(), "3".to_string());
-        assert_eq!(context.expand("$A".to_string()).unwrap(), "1".to_string());
-        assert_eq!(
-            context.expand("$A $B ".to_string()).unwrap(),
-            "1 2 ".to_string()
-        );
-        assert_eq!(
-            context.expand("${A} ${B} ".to_string()).unwrap(),
-            "1 2 ".to_string()
-        );
-        assert_eq!(
-            context.expand(r#"\$A"#.to_string()).unwrap(),
-            "$A".to_string()
-        );
-        assert_eq!(
-            context.expand(r#"\${A}"#.to_string()).unwrap(),
-            "${A}".to_string()
-        );
-        assert_eq!(context.expand(r#"\\$A"#.to_string()).unwrap(), r#"\1"#);
-        assert_eq!(context.expand(r#"\\${A}"#.to_string()).unwrap(), r#"\1"#);
+        assert_eq!(context.expand("$A").unwrap(), "1".to_string());
+        assert_eq!(context.expand("$A $B ").unwrap(), "1 2 ".to_string());
+        assert_eq!(context.expand("${A} ${B} ").unwrap(), "1 2 ".to_string());
+        assert_eq!(context.expand(r#"\$A"#).unwrap(), "$A".to_string());
+        assert_eq!(context.expand(r#"\${A}"#).unwrap(), "${A}".to_string());
+        assert_eq!(context.expand(r#"\\$A"#).unwrap(), r#"\1"#);
+        assert_eq!(context.expand(r#"\\${A}"#).unwrap(), r#"\1"#);
     }
 }
