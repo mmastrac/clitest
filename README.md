@@ -245,6 +245,9 @@ c
 !!!
 ```
 
+If the `!!!` or `???` start marker is indented, the lines between the start and
+end markers will have the corresponding indentation removed.
+
 ## Control Structures
 
 ### Repeat
