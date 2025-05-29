@@ -15,7 +15,7 @@ __testing = []
 clap = { version = "4.5", features = ["derive"] }
 shellish_parse = "2"
 thiserror = "2"
-grok2 = "2"
+grok = "2.1"
 onig = { version = "6.5", default-features = false }
 derive_more = { version = "2", features = ["display", "debug", "is_variant", "unwrap"] }
 termcolor = "1"

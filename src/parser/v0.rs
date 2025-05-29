@@ -1,4 +1,4 @@
-use grok2::Grok;
+use grok::Grok;
 use std::sync::Arc;
 
 use crate::{

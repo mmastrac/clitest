@@ -7,7 +7,6 @@ use std::{
 };
 
 use grok::Grok;
-use grok2 as grok;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::Color;
 
@@ -937,7 +936,7 @@ impl GrokPattern {
         grok: &mut Grok,
         line: &str,
         escape_non_grok: bool,
-    ) -> Result<Self, grok2::Error> {
+    ) -> Result<Self, grok::Error> {
         if escape_non_grok {
             // Borrowed from grok crate
             const GROK_PATTERN: &str = r"%\{(?<name>(?<pattern>[A-z0-9]+)(?::(?<alias>[A-z0-9_:;\/\s\.]+))?)(?:=(?<definition>(?:(?:[^{}]+|\.+)+)+))?\}";

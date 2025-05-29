@@ -70,8 +70,11 @@ macro_rules! println {
 macro_rules! cprintln {
     () => {
         {
+            use termcolor::{WriteColor, ColorSpec};
             use std::io::Write;
-            _ = writeln!(&mut $crate::term::STDOUT.lock().unwrap());
+            let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            _ = stdout.set_color(&ColorSpec::new());
+            _ = writeln!(&mut stdout);
         }
     };
     ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
