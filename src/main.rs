@@ -1,14 +1,11 @@
 use clap::{Parser, ValueEnum};
-use parser::parse_script;
-use script::{Script, ScriptFile, ScriptRunArgs, ScriptRunContext};
 use std::path::PathBuf;
 use termcolor::Color;
 
-mod command;
-mod parser;
-mod script;
-mod term;
+use clitest::*;
 
+use parser::parse_script;
+use script::{Script, ScriptFile, ScriptRunArgs, ScriptRunContext};
 #[derive(Parser, Debug, Clone, Copy, ValueEnum)]
 enum DumpFormat {
     Json,
@@ -100,14 +97,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>();
         match format {
             DumpFormat::Json => {
-                println!(
+                cprintln!(
                     "{}",
                     serde_json::to_string_pretty(&s).expect("Failed to serialize script files")
                 );
             }
             DumpFormat::Yaml => {
                 for script in s {
-                    println!(
+                    cprintln!(
                         "{}",
                         serde_yaml::to_string(&script).expect("Failed to serialize script files")
                     );
@@ -115,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             DumpFormat::Toml => {
                 for script in s {
-                    println!(
+                    cprintln!(
                         "{}",
                         toml::to_string_pretty(&script).expect("Failed to serialize script files")
                     );

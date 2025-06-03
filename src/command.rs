@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     io::{BufRead, BufReader},
     process::{Command, ExitStatus, Stdio},
-    sync::{Arc, Mutex},
     thread,
 };
 
@@ -11,8 +10,9 @@ use shellish_parse::ParseOptions;
 use termcolor::Color;
 
 use crate::{
-    cprint, cprintln, cwrite, cwriteln,
-    script::{Lines, ScriptKillReceiver, ScriptLocation},
+    cwrite, cwriteln,
+    output::Lines,
+    script::{ScriptKillReceiver, ScriptLocation},
 };
 
 #[derive(Clone, Debug, Serialize)]

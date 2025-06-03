@@ -33,6 +33,7 @@ utf8-supported = "0.1"
 tempfile = "3"
 keepcalm = "0.4"
 derive-io = "0.3"
+unflatter = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 win32job = "2"

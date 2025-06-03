@@ -1,14 +1,9 @@
 use grok::Grok;
 use std::sync::Arc;
 
-use crate::{
-    command::CommandLine,
-    script::{
-        CommandExit, ForCondition, GrokPattern, IfCondition, InternalCommand, OutputPattern,
-        OutputPatternType, Script, ScriptBlock, ScriptCommand, ScriptError, ScriptErrorType,
-        ScriptFile, ScriptLine, ScriptLocation,
-    },
-};
+use crate::command::CommandLine;
+use crate::output::*;
+use crate::script::*;
 
 #[derive(Debug, Clone, derive_more::IsVariant, derive_more::Unwrap)]
 enum BlockType {
@@ -1067,8 +1062,6 @@ fn parse_pattern_line(
 
 #[cfg(test)]
 mod tests {
-    use crate::script::{Lines, OutputMatchContext, ScriptRunContext};
-
     use super::*;
 
     fn parse_pattern(pattern: &str) -> Result<OutputPattern, ScriptError> {
