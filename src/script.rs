@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    io::Write,
     path::{Path, PathBuf},
     process::ExitStatus,
     sync::{Arc, Mutex, atomic::AtomicBool},
@@ -7,10 +8,11 @@ use std::{
 };
 
 use grok::Grok;
+use keepcalm::{SharedMut, project_cast};
 use serde::{Serialize, ser::SerializeMap};
-use termcolor::Color;
+use termcolor::{Color, ColorChoice, WriteColor};
 
-use crate::{command::CommandLine, cprint, cprintln, cprintln_rule};
+use crate::{command::CommandLine, cwrite, cwriteln, cwriteln_rule};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -213,9 +215,91 @@ pub struct ScriptRunArgs {
     pub delay_steps: Option<u64>,
     pub ignore_exit_codes: bool,
     pub ignore_matches: bool,
-    pub quiet: bool,
     pub show_line_numbers: bool,
     pub runner: Option<String>,
+    pub quiet: bool,
+    pub no_color: bool,
+}
+
+#[derive(derive_more::Debug, Clone)]
+pub struct ScriptOutput {
+    #[debug(skip)]
+    stream: SharedMut<Box<dyn WriteColorAny>>,
+}
+
+trait WriteColorAny: WriteColor + Send + Sync + std::any::Any + 'static + std::fmt::Debug {}
+
+impl WriteColorAny for termcolor::StandardStream {}
+impl WriteColorAny for termcolor::Buffer {}
+
+impl ScriptOutput {
+    pub fn no_color() -> Self {
+        let stm = termcolor::StandardStream::stdout(ColorChoice::Never);
+        Self {
+            stream: SharedMut::new(Box::new(stm) as _),
+        }
+    }
+
+    pub fn quiet(no_color: bool) -> Self {
+        let stm = if no_color {
+            termcolor::Buffer::no_color()
+        } else {
+            termcolor::Buffer::ansi()
+        };
+        Self {
+            stream: SharedMut::new(Box::new(stm) as _),
+        }
+    }
+
+    pub fn take_buffer(self) -> String {
+        let stream = SharedMut::try_unwrap(self.stream).unwrap();
+        let stream = stream as Box<dyn std::any::Any>;
+        let stream = stream.downcast::<termcolor::Buffer>().unwrap();
+        String::from_utf8_lossy(&stream.into_inner()).to_string()
+    }
+}
+
+impl Default for ScriptOutput {
+    fn default() -> Self {
+        let stm = termcolor::StandardStream::stdout(ColorChoice::Auto);
+        Self {
+            stream: SharedMut::new(Box::new(stm) as _),
+        }
+    }
+}
+
+impl std::io::Write for ScriptOutputLock<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.stream.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+impl termcolor::WriteColor for ScriptOutputLock<'_> {
+    fn supports_color(&self) -> bool {
+        self.stream.supports_color()
+    }
+    fn set_color(&mut self, spec: &termcolor::ColorSpec) -> std::io::Result<()> {
+        self.stream.set_color(spec)
+    }
+    fn reset(&mut self) -> std::io::Result<()> {
+        self.stream.reset()
+    }
+    fn is_synchronous(&self) -> bool {
+        self.stream.is_synchronous()
+    }
+    fn set_hyperlink(&mut self, _link: &termcolor::HyperlinkSpec) -> std::io::Result<()> {
+        self.stream.set_hyperlink(_link)
+    }
+    fn supports_hyperlinks(&self) -> bool {
+        self.stream.supports_hyperlinks()
+    }
+}
+
+struct ScriptOutputLock<'a> {
+    stream: keepcalm::SharedWriteLock<'a, Box<dyn WriteColorAny>>,
 }
 
 #[derive(derive_more::Debug)]
@@ -227,6 +311,7 @@ pub struct ScriptRunContext {
     kill: ScriptKillReceiver,
     #[debug(skip)]
     kill_sender: ScriptKillSender,
+    output: ScriptOutput,
 }
 
 impl Default for ScriptRunContext {
@@ -238,6 +323,7 @@ impl Default for ScriptRunContext {
             background: false,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
+            output: ScriptOutput::default(),
         }
     }
 }
@@ -251,15 +337,20 @@ impl ScriptRunContext {
             background: true,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
+            output: ScriptOutput::quiet(self.args.no_color),
         }
     }
 
     pub fn pwd(&self) -> PathBuf {
         self.envs
             .get("PWD")
-            .map(|s| s.clone())
+            .cloned()
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_dir().expect("Couldn't get current directory"))
+    }
+
+    pub fn take_output(self) -> String {
+        self.output.take_buffer()
     }
 
     /// Perform shell expansion on a string.
@@ -357,9 +448,9 @@ impl ScriptRunContext {
                 }
             }
             State::Dollar => {
-                return Err(ScriptRunError::ExpansionError(format!(
-                    "incomplete variable"
-                )));
+                return Err(ScriptRunError::ExpansionError(
+                    "incomplete variable".to_string(),
+                ));
             }
             State::InCurly => {
                 return Err(ScriptRunError::ExpansionError(format!(
@@ -369,12 +460,19 @@ impl ScriptRunContext {
             }
             State::Normal => {}
             State::EscapeNext => {
-                return Err(ScriptRunError::ExpansionError(format!(
-                    "unclosed backslash"
-                )));
+                return Err(ScriptRunError::ExpansionError(
+                    "unclosed backslash".to_string(),
+                ));
             }
         }
         Ok(expanded)
+    }
+
+    /// Get a mutable reference to the output stream.
+    pub fn stream(&self) -> impl termcolor::WriteColor + use<'_> {
+        ScriptOutputLock {
+            stream: self.output.stream.write(),
+        }
     }
 }
 
@@ -498,12 +596,10 @@ impl ScriptKillReceiver {
                     if let Some(status) = res {
                         return Ok::<_, std::io::Error>(status);
                     }
-                    if start.elapsed() > std::time::Duration::from_secs(10) {
-                        if !warned {
-                            let child = output.lock().unwrap().id();
-                            eprintln!("Process #{child} taking too long to finish.");
-                            warned = true;
-                        }
+                    if start.elapsed() > std::time::Duration::from_secs(10) && !warned {
+                        let child = output.lock().unwrap().id();
+                        eprintln!("Process #{child} taking too long to finish.");
+                        warned = true;
                     }
                     std::thread::sleep(Duration::from_millis(10));
                 }
@@ -529,7 +625,7 @@ impl ScriptKillSender {
 }
 
 impl ScriptRunContext {
-    pub fn new(args: ScriptRunArgs) -> Self {
+    pub fn new(args: ScriptRunArgs, script_path: &Path) -> Self {
         let mut envs = HashMap::new();
 
         macro_rules! target {
@@ -557,15 +653,20 @@ impl ScriptRunContext {
         // Set the current working directory as a special variable "PWD"
         envs.insert(
             "PWD".to_string(),
-            std::env::current_dir()
-                .expect("Couldn't get current directory")
-                .to_string_lossy()
-                .to_string(),
+            script_path.parent().unwrap().to_string_lossy().to_string(),
         );
         // Save the initial PWD as INITIAL_PWD so it can easily be restored
         envs.insert("INITIAL_PWD".to_string(), envs["PWD"].clone());
 
         let kill = Arc::new(AtomicBool::new(false));
+
+        let output = if args.quiet {
+            ScriptOutput::quiet(args.no_color)
+        } else if args.no_color {
+            ScriptOutput::no_color()
+        } else {
+            ScriptOutput::default()
+        };
 
         Self {
             args,
@@ -573,6 +674,7 @@ impl ScriptRunContext {
             background: false,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
+            output,
         }
     }
 }
@@ -1330,7 +1432,6 @@ impl ScriptBlock {
                 match block {
                     ScriptBlock::Background(blocks) => {
                         let mut context = context.new_background();
-                        context.args.quiet = true;
                         let kill_sender = context.kill_sender.clone();
                         let handle = s.spawn(move || Self::run_blocks(&mut context, blocks));
                         background.push((handle, kill_sender));
@@ -1367,54 +1468,51 @@ impl ScriptBlock {
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     if !warned && start.elapsed() > std::time::Duration::from_secs(10) {
-                        if !context.args.quiet {
-                            cprintln!(
-                                fg = Color::Yellow,
-                                "Background process is taking too long to finish."
-                            );
-                        }
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Yellow,
+                            "Background process is taking too long to finish."
+                        );
                         warned = true;
                     }
                     if start.elapsed() > std::time::Duration::from_secs(30) {
-                        if !context.args.quiet {
-                            cprintln!(
-                                fg = Color::Red,
-                                "Background process took too long to finish."
-                            );
-                        }
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Red,
+                            "Background process took too long to finish."
+                        );
                         return Err(ScriptRunError::BackgroundProcessTookTooLong);
                     }
                 };
                 for result in results {
-                    if !context.args.quiet {
-                        cprint!(dimmed = true, "(background) ");
-                        for line in result.command.command.split('\n') {
-                            cprintln!(fg = Color::Green, "{}", line);
-                        }
-                        cprintln_rule!(fg = Color::Cyan, "{}", result.command.location);
-                        for line in &result.output {
-                            cprintln!("{}", line);
-                        }
-                        if result.output.is_empty() {
-                            cprintln!(dimmed = true, "(no output)");
-                        }
-                        cprintln_rule!();
+                    cwrite!(context.stream(), dimmed = true, "(background) ");
+                    for line in result.command.command.split('\n') {
+                        cwriteln!(context.stream(), fg = Color::Green, "{}", line);
                     }
+                    cwriteln_rule!(
+                        context.stream(),
+                        fg = Color::Cyan,
+                        "{}",
+                        result.command.location
+                    );
+                    for line in &result.output {
+                        cwriteln!(context.stream(), "{}", line);
+                    }
+                    if result.output.is_empty() {
+                        cwriteln!(context.stream(), dimmed = true, "(no output)");
+                    }
+                    cwriteln_rule!(context.stream());
                     result.evaluate(context)?;
                 }
             }
             for block in defer_blocks {
                 match block {
                     Deferred::Script(block) => {
-                        if !context.args.quiet {
-                            cprint!(dimmed = true, "(deferred) ");
-                        }
+                        cwrite!(context.stream(), dimmed = true, "(deferred) ");
                         block.run(context)?;
                     }
                     Deferred::Internal(block) => {
-                        if !context.args.quiet {
-                            cprint!(dimmed = true, "(cleanup) ");
-                        }
+                        cwrite!(context.stream(), dimmed = true, "(cleanup) ");
                         block(context)?;
                     }
                 }
@@ -1429,13 +1527,12 @@ impl ScriptBlock {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<Vec<ScriptResult>, ScriptRunError> {
         let pwd = context.pwd();
         if !matches!(std::fs::exists(&pwd), Ok(true)) {
-            if !context.args.quiet {
-                cprintln!(
-                    fg = Color::Red,
-                    "$PWD {pwd:?} doesn't exist, returning to $INITIAL_PWD {:?}. Run `cd $INITIAL_PWD` to fix.",
-                    context.envs["INITIAL_PWD"]
-                );
-            }
+            let initial_pwd = context.envs["INITIAL_PWD"].clone();
+            cwriteln!(
+                context.stream(),
+                fg = Color::Red,
+                "$PWD {pwd:?} doesn't exist, returning to $INITIAL_PWD {initial_pwd:?}. Run `cd $INITIAL_PWD` to fix.",
+            );
             context
                 .envs
                 .insert("PWD".to_string(), context.envs["INITIAL_PWD"].clone());
@@ -1527,25 +1624,22 @@ impl InternalCommand {
             InternalCommand::UsingTempdir => {
                 let current_pwd = context.pwd();
                 let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
-                if !context.args.quiet {
-                    cprint!(fg = Color::Yellow, "using tempdir: ");
-                    cprintln!("{}", tempdir.path().to_string_lossy());
-                    cprintln!();
-                }
+                cwrite!(context.stream(), fg = Color::Yellow, "using tempdir: ");
+                cwriteln!(context.stream(), "{}", tempdir.path().to_string_lossy());
+                cwriteln!(context.stream());
                 context.envs.insert(
                     "PWD".to_string(),
                     tempdir.path().to_string_lossy().to_string(),
                 );
                 Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
-                    if !context.args.quiet {
-                        cprintln!(
-                            fg = Color::Yellow,
-                            "removing {} && cd {}",
-                            tempdir.path().to_string_lossy(),
-                            current_pwd.to_string_lossy()
-                        );
-                        cprintln!();
-                    }
+                    cwriteln!(
+                        context.stream(),
+                        fg = Color::Yellow,
+                        "removing {} && cd {}",
+                        tempdir.path().to_string_lossy(),
+                        current_pwd.to_string_lossy()
+                    );
+                    cwriteln!(context.stream());
                     std::fs::remove_dir_all(&tempdir)?;
                     drop(tempdir);
                     Ok::<_, ScriptRunError>(())
@@ -1555,42 +1649,43 @@ impl InternalCommand {
                 let current_pwd = context.pwd();
                 let dir = context.expand(dir)?;
                 let new_pwd = current_pwd.join(dir);
-                if !context.args.quiet {
-                    if new {
-                        cprint!(fg = Color::Yellow, "using new dir: ");
-                    } else {
-                        cprint!(fg = Color::Yellow, "using dir: ");
-                    }
-                    cprintln!("{}", new_pwd.to_string_lossy());
-                    cprintln!();
+                if new {
+                    cwrite!(context.stream(), fg = Color::Yellow, "using new dir: ");
+                } else {
+                    cwrite!(context.stream(), fg = Color::Yellow, "using dir: ");
                 }
+                cwriteln!(context.stream(), "{}", new_pwd.to_string_lossy());
+                cwriteln!(context.stream());
 
                 if new {
                     std::fs::create_dir_all(&new_pwd)?;
-                } else {
-                    if !new_pwd.exists() {
-                        return Err(ScriptRunError::IO(std::io::Error::new(
-                            std::io::ErrorKind::NotFound,
-                            "directory does not exist",
-                        )));
-                    }
+                } else if !new_pwd.exists() {
+                    return Err(ScriptRunError::IO(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "directory does not exist",
+                    )));
                 }
                 context
                     .envs
                     .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
                 Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
-                    if !context.args.quiet {
-                        if new {
-                            cprintln!(
-                                fg = Color::Yellow,
-                                "removing {} && cd {}",
-                                new_pwd.to_string_lossy(),
-                                current_pwd.to_string_lossy()
-                            );
-                        } else {
-                            cprintln!(fg = Color::Yellow, "cd {}", current_pwd.to_string_lossy());
-                        }
-                        cprintln!();
+                    if new {
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Yellow,
+                            "removing {} && cd {}",
+                            new_pwd.to_string_lossy(),
+                            current_pwd.to_string_lossy()
+                        );
+                        cwriteln!(context.stream());
+                    } else {
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Yellow,
+                            "cd {}",
+                            current_pwd.to_string_lossy()
+                        );
+                        cwriteln!(context.stream());
                     }
                     if new {
                         std::fs::remove_dir_all(&new_pwd)?;
@@ -1604,10 +1699,8 @@ impl InternalCommand {
             InternalCommand::ChangeDir(dir) => {
                 let dir = context.expand(dir)?;
 
-                if !context.args.quiet {
-                    cprintln!(fg = Color::Yellow, "cd {dir}");
-                    cprintln!();
-                }
+                cwriteln!(context.stream(), fg = Color::Yellow, "cd {dir}");
+                cwriteln!(context.stream());
                 let current_pwd = context.pwd();
                 let new_pwd = current_pwd.join(dir);
                 context
@@ -1618,10 +1711,8 @@ impl InternalCommand {
             InternalCommand::Set(name, value) => {
                 let value = context.expand(value)?;
 
-                if !context.args.quiet {
-                    cprintln!(fg = Color::Yellow, "set {name} {value}");
-                    cprintln!();
-                }
+                cwriteln!(context.stream(), fg = Color::Yellow, "set {name} {value}");
+                cwriteln!(context.stream());
 
                 context.envs.insert(name.clone(), value);
                 Ok(None)
@@ -1715,19 +1806,17 @@ pub struct ScriptCommand {
 
 impl ScriptCommand {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<ScriptResult, ScriptRunError> {
-        use crate::{cprintln, cprintln_rule, term::Color};
+        use crate::{cwriteln_rule, term::Color};
 
         let command = &self.command;
         let args = &context.args;
 
-        if !args.quiet {
-            for line in command.command.split('\n') {
-                cprintln!(fg = Color::Green, "{}", line);
-            }
-            cprintln_rule!(fg = Color::Cyan, "{}", command.location);
+        for line in command.command.split('\n') {
+            cwriteln!(context.stream(), fg = Color::Green, "{}", line);
         }
+        cwriteln_rule!(context.stream(), fg = Color::Cyan, "{}", command.location);
         let (output, status) = command.run(
-            context.args.quiet || context.background,
+            &mut context.stream(),
             context.args.show_line_numbers,
             context.args.runner.clone(),
             &context.envs,
@@ -1747,8 +1836,8 @@ impl ScriptCommand {
             ExitResult::Matches(status)
         };
 
-        let context = OutputMatchContext::new(context);
-        let pattern_result = match self.pattern.matches(context.clone(), output.clone()) {
+        let match_context = OutputMatchContext::new(context);
+        let pattern_result = match self.pattern.matches(match_context.clone(), output.clone()) {
             Ok(_) => {
                 if self.expect_failure {
                     PatternResult::ExpectedFailure
@@ -1761,7 +1850,7 @@ impl ScriptCommand {
                     PatternResult::MatchesFailure
                 } else {
                     let mut trace = String::new();
-                    for line in context.traces() {
+                    for line in match_context.traces() {
                         trace.push_str(&format!("{line}\n"));
                     }
                     PatternResult::Mismatch(e, trace)
@@ -1769,12 +1858,10 @@ impl ScriptCommand {
             }
         };
 
-        if output.is_empty() && !args.quiet {
-            cprintln!(dimmed = true, "(no output)");
+        if output.is_empty() {
+            cwriteln!(context.stream(), dimmed = true, "(no output)");
         }
-        if !args.quiet {
-            cprintln_rule!();
-        }
+        cwriteln_rule!(context.stream());
 
         if let Some(delay) = args.delay_steps {
             std::thread::sleep(std::time::Duration::from_millis(delay));
@@ -1809,47 +1896,61 @@ impl ScriptResult {
 
         if let ExitResult::Mismatch(status) = self.exit {
             if !args.ignore_exit_codes {
-                if !args.quiet {
-                    cprintln!(fg = Color::Red, "{failure} FAIL: {status}");
-                    cprintln!(dimmed = true, " {arrow} {}", self.command.command);
-                    cprintln!();
-                }
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Red,
+                    "{failure} FAIL: {status}"
+                );
+                cwriteln!(
+                    context.stream(),
+                    dimmed = true,
+                    " {arrow} {}",
+                    self.command.command
+                );
+                cwriteln!(context.stream());
                 return Err(ScriptRunError::Exit(status));
             }
         }
 
         if let PatternResult::Mismatch(e, trace) = &self.pattern {
             if !args.ignore_matches {
-                if !args.quiet {
-                    cprintln!(fg = Color::Red, "ERROR: {e}");
-                    cprintln!(dimmed = true, "{trace}");
-                    cprintln!(fg = Color::Red, "{failure} FAIL");
-                    cprintln!();
-                }
+                cwriteln!(context.stream(), fg = Color::Red, "ERROR: {e}");
+                cwriteln!(context.stream(), dimmed = true, "{trace}");
+                cwriteln!(context.stream(), fg = Color::Red, "{failure} FAIL");
+                cwriteln!(context.stream());
                 return Err(ScriptRunError::Pattern(e.clone()));
             }
         }
 
         if let PatternResult::ExpectedFailure = self.pattern {
             if !args.ignore_matches {
-                if !args.quiet {
-                    cprintln!(fg = Color::Red, "{failure} FAIL (output shouldn't match)");
-                    cprintln!(dimmed = true, " {arrow} {}", self.command.command);
-                    cprintln!();
-                }
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Red,
+                    "{failure} FAIL (output shouldn't match)"
+                );
+                cwriteln!(
+                    context.stream(),
+                    dimmed = true,
+                    " {arrow} {}",
+                    self.command.command
+                );
+                cwriteln!(context.stream());
                 return Err(ScriptRunError::ExpectedFailure);
             }
         }
 
         if let ExitResult::Matches(status) = self.exit {
-            if !args.quiet {
-                if status.success() {
-                    cprintln!(fg = Color::Green, "{success} OK");
-                } else {
-                    cprintln!(fg = Color::Green, "{success} OK ({status})");
-                }
-                cprintln!();
+            if status.success() {
+                cwriteln!(context.stream(), fg = Color::Green, "{success} OK");
+            } else {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Green,
+                    "{success} OK ({status})"
+                );
             }
+            cwriteln!(context.stream());
         }
 
         Ok(())
@@ -1920,7 +2021,7 @@ $ cmd &
 
     #[test]
     fn test_script_run_context_expand() {
-        let mut context = ScriptRunContext::new(ScriptRunArgs::default());
+        let mut context = ScriptRunContext::new(ScriptRunArgs::default(), &Path::new("."));
         context.envs.insert("A".to_string(), "1".to_string());
         context.envs.insert("B".to_string(), "2".to_string());
         context.envs.insert("C".to_string(), "3".to_string());

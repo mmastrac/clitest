@@ -1,0 +1,34 @@
+Running tests/v0/using_tempdir.cli ...
+
+using tempdir: <tmp>
+
+using new dir: <tmp>/subdir
+
+touch foo
+---
+(no output)
+---
+✅ OK
+
+cd ..
+
+find .
+---
+.
+./subdir
+./subdir/foo
+---
+✅ OK
+
+(cleanup) removing <tmp>/subdir && cd <tmp>
+
+(deferred) echo "cleaning up"
+---
+cleaning up
+---
+✅ OK
+
+(cleanup) removing <tmp> && cd <root>/tests/v0
+
+tests/v0/using_tempdir.cli PASSED
+1 test(s) passed

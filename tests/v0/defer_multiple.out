@@ -1,0 +1,28 @@
+Running tests/v0/defer_multiple.cli ...
+
+(deferred) echo 2a
+---
+2a
+---
+✅ OK
+
+(deferred) echo 2b
+---
+2b
+---
+✅ OK
+
+(deferred) echo 1a
+---
+1a
+---
+✅ OK
+
+(deferred) echo 1b
+---
+1b
+---
+✅ OK
+
+tests/v0/defer_multiple.cli PASSED
+1 test(s) passed

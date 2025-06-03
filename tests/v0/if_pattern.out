@@ -1,0 +1,16 @@
+Running tests/v0/if_pattern.cli ...
+
+echo $TARGET_OS
+---
+linux
+---
+✅ OK
+
+uname -a
+---
+Linux kame 6.11.0-26-generic #26~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Apr 17 19:20:47 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+---
+✅ OK
+
+tests/v0/if_pattern.cli PASSED
+1 test(s) passed

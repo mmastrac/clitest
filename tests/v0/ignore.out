@@ -1,0 +1,40 @@
+Running tests/v0/ignore.cli ...
+
+printf "IGNORED something\na\n"
+---
+IGNORED something
+a
+---
+✅ OK
+
+printf "a\nIGNORED something\nb\n"
+---
+a
+IGNORED something
+b
+---
+✅ OK
+
+printf "a\nXIGNORED something\nb\nXIGNORED something else\nc\n"
+---
+a
+XIGNORED something
+b
+XIGNORED something else
+c
+---
+✅ OK
+
+printf "LOG first\na\nLOG something\nb\nLOG something else\nc\n"
+---
+LOG first
+a
+LOG something
+b
+LOG something else
+c
+---
+✅ OK
+
+tests/v0/ignore.cli PASSED
+1 test(s) passed

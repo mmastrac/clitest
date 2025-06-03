@@ -1,0 +1,32 @@
+Running tests/v0/if.cli ...
+
+printf "true\n"
+---
+true
+---
+✅ OK
+
+set x 1
+
+set y 1
+
+printf "x is 1\n"
+---
+x is 1
+---
+✅ OK
+
+printf "x is not 2\n"
+---
+x is not 2
+---
+✅ OK
+
+printf "x is equal to y\n"
+---
+x is equal to y
+---
+✅ OK
+
+tests/v0/if.cli PASSED
+1 test(s) passed

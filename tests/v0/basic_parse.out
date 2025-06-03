@@ -1,0 +1,72 @@
+Running tests/v0/basic_parse.cli ...
+
+printf "a\nb\nc\n\n"
+---
+a
+b
+c
+
+---
+✅ OK
+
+printf "a\nb\nc\n\n"
+---
+a
+b
+c
+
+---
+✅ OK
+
+echo "a
+b
+c
+"
+---
+a
+b
+c
+
+---
+✅ OK
+
+echo a\
+b\
+c
+---
+abc
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "$ENV_VAR\n"
+---
+a
+b
+c
+---
+✅ OK
+
+VAR2="a\nb\nc" sh -c 'printf "$VAR2\n"'
+---
+a
+b
+c
+---
+✅ OK
+
+printf "%%{}\n"
+---
+%{}
+---
+✅ OK
+
+tests/v0/basic_parse.cli PASSED
+1 test(s) passed

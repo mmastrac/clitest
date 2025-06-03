@@ -1,0 +1,58 @@
+Running tests/v0/for.cli ...
+
+printf "$x\n"
+---
+1
+---
+✅ OK
+
+printf "$x\n"
+---
+2
+---
+✅ OK
+
+printf "$x\n"
+---
+3
+---
+✅ OK
+
+set A 1
+
+set B 2
+
+set C 3
+
+set LAST 1
+
+printf "$x\n"
+---
+1
+---
+✅ OK
+
+set LAST 2
+
+printf "$x\n"
+---
+2
+---
+✅ OK
+
+set LAST 3
+
+printf "$x\n"
+---
+3
+---
+✅ OK
+
+echo $LAST
+---
+3
+---
+✅ OK
+
+tests/v0/for.cli PASSED
+1 test(s) passed

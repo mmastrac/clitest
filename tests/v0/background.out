@@ -1,0 +1,31 @@
+Running tests/v0/background.cli ...
+
+mktemp
+---
+<tmp>
+---
+✅ OK
+
+sleep .1 && cat $TEMP_FILE
+---
+background
+background
+background
+background
+background
+background
+background
+background
+background
+background
+---
+✅ OK
+
+(background) while true; do printf "background\n" >> $TEMP_FILE; sleep .01; done
+---
+(no output)
+---
+✅ OK (signal: 1 (SIGHUP))
+
+tests/v0/background.cli PASSED
+1 test(s) passed

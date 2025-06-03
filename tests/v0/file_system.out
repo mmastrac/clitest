@@ -1,0 +1,69 @@
+Running tests/v0/file_system.cli ...
+
+rm -rf <tmp> || printf "no dir to remove\n"
+---
+(no output)
+---
+✅ OK
+
+mkdir <tmp>
+---
+(no output)
+---
+✅ OK
+
+cd <tmp> && ls -a1
+---
+.
+..
+---
+✅ OK
+
+printf "hello world\n" > <tmp>/file1
+---
+(no output)
+---
+✅ OK
+
+printf "world\n" > <tmp>/file2
+---
+(no output)
+---
+✅ OK
+
+ls -a1 <tmp>
+---
+.
+..
+file1
+file2
+---
+✅ OK
+
+ls -1 "<tmp>/"*
+---
+<tmp>/file1
+<tmp>/file2
+---
+✅ OK
+
+ls -a1 <tmp>
+---
+.
+..
+file1
+file2
+---
+✅ OK
+
+ls -a1 <tmp> 1>&2
+---
+.
+..
+file1
+file2
+---
+✅ OK
+
+tests/v0/file_system.cli PASSED
+1 test(s) passed

@@ -129,18 +129,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let total = script_files.len();
 
     for script in script_files {
-        std::env::set_current_dir(&script.script_dir).expect("failed to set current directory");
-
         let args = ScriptRunArgs {
             delay_steps: args.delay_steps,
             ignore_exit_codes: args.ignore_exit_codes,
             ignore_matches: args.ignore_matches,
-            quiet: args.quiet,
             runner: args.runner.clone(),
             show_line_numbers: args.show_line_numbers,
+            quiet: args.quiet,
+            no_color: false,
         };
 
-        let mut context = ScriptRunContext::new(args);
+        let mut context = ScriptRunContext::new(args, &script.script_dir);
 
         if context.args.quiet {
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);

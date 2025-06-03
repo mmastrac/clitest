@@ -17,21 +17,19 @@ pattern FILENAME [\w\-\.]+
 $ rm -rf /tmp/testing-dir || printf "no dir to remove\n"
 $ mkdir /tmp/testing-dir
 
-$ cd /tmp/testing-dir && ls -al
-! total %{NUMBER}
-! %{GREEDYDATA} .
-! %{GREEDYDATA} ..
+$ cd /tmp/testing-dir && ls -a1
+! .
+! ..
 
 $ printf "hello world\n" > /tmp/testing-dir/file1
 $ printf "world\n" > /tmp/testing-dir/file2
 
-$ ls -al /tmp/testing-dir
+$ ls -a1 /tmp/testing-dir
 !!!
-total %{NUMBER}
-%{GREEDYDATA} .
-%{GREEDYDATA} ..
-%{GREEDYDATA} file1
-%{GREEDYDATA} file2
+.
+..
+file1
+file2
 !!!
 
 $ ls -1 "/tmp/testing-dir/"*
@@ -41,15 +39,13 @@ $ ls -1 "/tmp/testing-dir/"*
 !!!
 
 # Test with a pattern that matches a filename
-$ ls -al /tmp/testing-dir
-! total %{NUMBER}
+$ ls -a1 /tmp/testing-dir
 repeat {
-    ! %{GREEDYDATA} %{FILENAME}
+    ! %{FILENAME}
 }
 
 # Test with a pattern that matches a filename
-$ ls -al /tmp/testing-dir 1>&2
-! total %{NUMBER}
+$ ls -a1 /tmp/testing-dir 1>&2
 repeat {
-    ! %{GREEDYDATA} %{FILENAME}
+    ! %{FILENAME}
 }

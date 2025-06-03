@@ -11,7 +11,7 @@ use shellish_parse::ParseOptions;
 use termcolor::Color;
 
 use crate::{
-    cprint, cprintln,
+    cprint, cprintln, cwrite, cwriteln,
     script::{Lines, ScriptKillReceiver, ScriptLocation},
 };
 
@@ -36,141 +36,133 @@ impl CommandLine {
 
     pub fn run(
         &self,
-        quiet: bool,
+        writer: &mut dyn termcolor::WriteColor,
         show_line_numbers: bool,
         runner: Option<String>,
         envs: &HashMap<String, String>,
         kill_receiver: &ScriptKillReceiver,
     ) -> Result<(Lines, ExitStatus), std::io::Error> {
-        let mut command = if let Some(runner) = runner {
-            let bits = shellish_parse::parse(&runner, ParseOptions::default())
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-            let mut cmd = Command::new(&bits[0]);
-            cmd.args(&bits[1..]);
-            cmd
-        } else {
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c");
-            cmd
-        };
-        command.arg(&self.command);
-        command.envs(envs);
-        if let Some(pwd) = envs.get("PWD") {
-            command.current_dir(pwd);
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            command.process_group(0);
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_SUSPENDED: u32 = 0x00000004;
-            command.creation_flags(CREATE_SUSPENDED);
-        }
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
-        command.stdin(Stdio::null());
-        let mut output = command.spawn().map_err(|e| {
-            std::io::Error::new(
-                e.kind(),
-                format!("failed to spawn command {command:?}: {e}"),
-            )
-        })?;
-        let output_lines = Arc::new(Mutex::new(Vec::new()));
-        let line_number = Arc::new(Mutex::new(1));
+        thread::scope(|s| {
+            let mut command = if let Some(runner) = runner {
+                let bits = shellish_parse::parse(&runner, ParseOptions::default())
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+                let mut cmd = Command::new(&bits[0]);
+                cmd.args(&bits[1..]);
+                cmd
+            } else {
+                let mut cmd = Command::new("sh");
+                cmd.arg("-c");
+                cmd
+            };
+            command.arg(&self.command);
+            command.envs(envs);
+            if let Some(pwd) = envs.get("PWD") {
+                command.current_dir(pwd);
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                command.process_group(0);
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_SUSPENDED: u32 = 0x00000004;
+                command.creation_flags(CREATE_SUSPENDED);
+            }
+            command.stdout(Stdio::piped());
+            command.stderr(Stdio::piped());
+            command.stdin(Stdio::null());
+            let mut output = command.spawn().map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!("failed to spawn command {command:?}: {e}"),
+                )
+            })?;
 
-        // Spawn a thread for stdout and stderr and collect each line we read into a buffer
-        let stdout_lines = output_lines.clone();
-        let stdout = output.stdout.take().unwrap();
-        let line_number_stdout = line_number.clone();
-        let stdout = thread::spawn(move || {
-            let mut reader = BufReader::new(stdout);
-            let mut line = String::new();
-            while reader.read_line(&mut line).unwrap() > 0 {
-                if line.is_empty() {
-                    continue;
-                }
-                if line.ends_with('\n') {
-                    line.pop();
-                }
-                let mut line_number = line_number_stdout.lock().unwrap();
-                if !quiet {
-                    if show_line_numbers {
-                        cprint!(fg = Color::White, dimmed = true, "{line_number:>3} ");
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            // Spawn a thread for stdout and stderr and collect each line we read into a buffer
+            let stdout_lines = tx.clone();
+            let stdout = output.stdout.take().unwrap();
+            let stdout = s.spawn(move || {
+                let mut reader = BufReader::new(stdout);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap() > 0 {
+                    if line.is_empty() {
+                        continue;
                     }
-                    cprintln!("{line}");
-                }
-                stdout_lines.lock().unwrap().push(std::mem::take(&mut line));
-                *line_number += 1;
-            }
-        });
-
-        let stderr_lines = output_lines.clone();
-        let stderr = output.stderr.take().unwrap();
-        let stderr = thread::spawn(move || {
-            let mut reader = BufReader::new(stderr);
-            let mut line = String::new();
-            while reader.read_line(&mut line).unwrap() > 0 {
-                if line.is_empty() {
-                    continue;
-                }
-                if line.ends_with('\n') {
-                    line.pop();
-                }
-                let mut line_number = line_number.lock().unwrap();
-                if !quiet {
-                    if show_line_numbers {
-                        cprint!(fg = Color::White, dimmed = true, "{line_number:>3} ");
+                    if line.ends_with('\n') {
+                        line.pop();
                     }
-                    cprintln!(fg = Color::Yellow, "{line}");
+                    _ = stdout_lines.send((true, std::mem::take(&mut line)));
                 }
-                stderr_lines.lock().unwrap().push(std::mem::take(&mut line));
-                *line_number += 1;
-            }
-        });
+            });
 
-        let res = kill_receiver.run_cmd(output)?;
-        let join_start = std::time::Instant::now();
-        let mut stdout_holder = Some(stdout);
-        let mut stderr_holder = Some(stderr);
-        loop {
-            if stdout_holder.is_none() && stderr_holder.is_none() {
-                break;
-            }
-            if join_start.elapsed() > std::time::Duration::from_secs(30) {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "process took too long to join",
-                ));
-            }
+            let stderr_lines = tx;
+            let stderr = output.stderr.take().unwrap();
+            let stderr = s.spawn(move || {
+                let mut reader = BufReader::new(stderr);
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap() > 0 {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if line.ends_with('\n') {
+                        line.pop();
+                    }
+                    _ = stderr_lines.send((false, std::mem::take(&mut line)));
+                }
+            });
 
-            if let Some(stdout) = stdout_holder.take() {
-                if stdout.is_finished() {
-                    stdout.join().map_err(|_| {
-                        std::io::Error::new(std::io::ErrorKind::Other, "stdout thread panicked")
-                    })?;
+            let runner = s.spawn(move || kill_receiver.run_cmd(output));
+
+            let mut line_number = 1;
+            let mut output_lines = vec![];
+            while let Ok((is_stdout, line)) = rx.recv() {
+                if show_line_numbers {
+                    cwrite!(
+                        writer,
+                        fg = Color::White,
+                        dimmed = true,
+                        "{line_number:>3} "
+                    );
+                }
+                if is_stdout {
+                    cwriteln!(writer, fg = Color::White, "{line}");
                 } else {
-                    stdout_holder = Some(stdout);
+                    cwriteln!(writer, fg = Color::Yellow, "{line}");
                 }
+
+                output_lines.push(line);
+                line_number += 1;
             }
-            if let Some(stderr) = stderr_holder.take() {
-                if stderr.is_finished() {
-                    stderr.join().map_err(|_| {
-                        std::io::Error::new(std::io::ErrorKind::Other, "stderr thread panicked")
-                    })?;
-                } else {
-                    stderr_holder = Some(stderr);
+
+            let join_start = std::time::Instant::now();
+            let mut handles = vec![stdout, stderr];
+            while !handles.is_empty() {
+                if join_start.elapsed() > std::time::Duration::from_secs(30) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "process took too long to join",
+                    ));
                 }
+
+                let mut new_handles = vec![];
+                for handle in handles.drain(..) {
+                    if handle.is_finished() {
+                        handle
+                            .join()
+                            .map_err(|_| std::io::Error::other("thread panicked"))?;
+                    } else {
+                        new_handles.push(handle);
+                    }
+                }
+                handles = new_handles;
+                std::thread::sleep(std::time::Duration::from_millis(10));
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
 
-        let output_lines = Arc::try_unwrap(output_lines).map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::Other, "output lines still locked")
-        })?;
-
-        Ok((Lines::new(output_lines.into_inner().unwrap()), res))
+            Ok((Lines::new(output_lines), runner.join().unwrap()?))
+        })
     }
 }

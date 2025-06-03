@@ -61,40 +61,40 @@ macro_rules! println {
     ($($arg:tt)*) => {
         {
             use std::io::Write;
-            _ = writeln!(&mut $crate::term::STDOUT.lock().unwrap(), $($arg)*);
+            _ = writeln!($crate::term::STDOUT.lock().unwrap(), $($arg)*);
         }
     };
 }
 
 #[macro_export]
-macro_rules! cprintln {
-    () => {
+macro_rules! cwriteln {
+    ($stream:expr) => {
         {
             use termcolor::{WriteColor, ColorSpec};
-            use std::io::Write;
-            let mut stdout = $crate::term::STDOUT.lock().unwrap();
-            _ = stdout.set_color(&ColorSpec::new());
-            _ = writeln!(&mut stdout);
+            let stream: &mut dyn WriteColor = &mut $stream;
+            _ = stream.set_color(&ColorSpec::new());
+            _ = writeln!(stream);
         }
     };
-    ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
+    ($stream:expr, $(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
         {
+            #[allow(unused_imports)]
             use std::io::Write;
-            $crate::cprint!($(fg=$fg,)? $(bg=$bg,)? $(bold=$bold,)? $(dimmed=$dimmed,)? $literal $($arg)*);
-            let mut stdout = $crate::term::STDOUT.lock().unwrap();
-            _ = writeln!(&mut stdout);
+            $crate::cwrite!($stream, $(fg=$fg,)? $(bg=$bg,)? $(bold=$bold,)? $(dimmed=$dimmed,)? $literal $($arg)*);
+            _ = writeln!($stream);
         }
     };
 }
 
 #[macro_export]
-macro_rules! cprint {
-    ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
+macro_rules! cwrite {
+    ($stream:expr, $(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
         {
-            use std::io::Write;
+            #[allow(unused_imports)]
             use termcolor::{WriteColor, ColorSpec};
+            #[allow(unused_imports)]
+            use std::io::Write;
 
-            let mut stdout = $crate::term::STDOUT.lock().unwrap();
             #[allow(unused_mut)]
             let mut color = ColorSpec::new();
             $(
@@ -109,9 +109,35 @@ macro_rules! cprint {
             $(
                 color.set_dimmed($dimmed);
             )?
-            _ = stdout.set_color(&color);
-            _ = write!(&mut stdout, $literal $($arg)*);
-            _ = stdout.set_color(&ColorSpec::new());
+            _ = $stream.set_color(&color);
+            _ = write!($stream, $literal $($arg)*);
+            _ = $stream.set_color(&ColorSpec::new());
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! cprintln {
+    () => {
+        {
+            let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            $crate::cwriteln!(&mut *stdout);
+        }
+    };
+    ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
+        {
+            let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            $crate::cwriteln!(&mut stdout, $(fg=$fg,)? $(bg=$bg,)? $(bold=$bold,)? $(dimmed=$dimmed,)? $literal $($arg)*);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! cprint {
+    ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
+        {
+            let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            $crate::cwrite!(&mut stdout, $(fg=$fg,)? $(bg=$bg,)? $(bold=$bold,)? $(dimmed=$dimmed,)? $literal $($arg)*);
         }
     };
 }
@@ -122,19 +148,21 @@ macro_rules! cprint {
 /// -[messsage]----------------- ...
 /// ```
 #[macro_export]
-macro_rules! cprintln_rule {
-    () => {
+macro_rules! cwriteln_rule {
+    ($stream:expr) => {
         let is_utf8 = *$crate::term::IS_UTF8;
 
         if is_utf8 {
-            $crate::cprintln!(
+            $crate::cwriteln!(
+                $stream,
                 dimmed = true,
                 "{:─>count$}",
                 "",
                 count = $crate::term::term_width() - 1
             );
         } else {
-            $crate::cprintln!(
+            $crate::cwriteln!(
+                $stream,
                 dimmed = true,
                 "{:->count$}",
                 "",
@@ -142,7 +170,7 @@ macro_rules! cprintln_rule {
             );
         }
     };
-    ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
+    ($stream:expr, $(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
         use ::unicode_width::UnicodeWidthStr;
 
         let message = format!($literal $($arg)*);
@@ -157,33 +185,49 @@ macro_rules! cprintln_rule {
             let is_utf8 = *$crate::term::IS_UTF8;
 
             if is_utf8 {
-                $crate::cprint!(dimmed = true, "{:─>count$}", "", count = max_width - message_width);
+                $crate::cwrite!($stream, dimmed = true, "{:─>count$}", "", count = max_width - message_width);
             } else {
-                $crate::cprint!(dimmed = true, "{:->count$}", "", count = max_width - message_width);
+                $crate::cwrite!($stream, dimmed = true, "{:->count$}", "", count = max_width - message_width);
             }
 
             if is_utf8 {
-                $crate::cprint!(dimmed = true, "┨ ");
+                $crate::cwrite!($stream, dimmed = true, "┨ ");
             } else {
-                $crate::cprint!(dimmed = true, "[ ");
+                $crate::cwrite!($stream, dimmed = true, "[ ");
             }
-            $crate::cprint!($(fg = $fg,)? $(bg = $bg,)? $(bold = $bold,)? $(dimmed = $dimmed,)? "{message}");
+            $crate::cwrite!($stream, $(fg = $fg,)? $(bg = $bg,)? $(bold = $bold,)? $(dimmed = $dimmed,)? "{message}");
             if is_utf8 {
-                $crate::cprint!(dimmed = true, " ┣");
+                $crate::cwrite!($stream, dimmed = true, " ┣");
             } else {
-                $crate::cprint!(dimmed = true, " ]");
+                $crate::cwrite!($stream, dimmed = true, " ]");
             }
 
             if is_utf8 {
-                $crate::cprint!(dimmed = true, "━━");
+                $crate::cwrite!($stream, dimmed = true, "━━");
             } else {
-                $crate::cprint!(dimmed = true, "--");
+                $crate::cwrite!($stream, dimmed = true, "--");
             }
-            $crate::cprintln!();
+            $crate::cwriteln!($stream);
         } else {
-            $crate::cprintln_rule!();
+            $crate::cwriteln_rule!($stream);
         }
     }
+}
+
+#[macro_export]
+macro_rules! cprintln_rule {
+    () => {
+        {
+            let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            $crate::cwriteln_rule!(&mut stdout);
+        }
+    };
+    ($(fg=$fg:expr,)? $(bg=$bg:expr,)? $(bold=$bold:expr,)? $(dimmed=$dimmed:expr,)? $literal:literal $($arg:tt)*) => {
+        {
+            let mut stdout = $crate::term::STDOUT.lock().unwrap();
+            $crate::cwriteln_rule!(&mut *stdout, $(fg=$fg,)? $(bg=$bg,)? $(bold=$bold,)? $(dimmed=$dimmed,)? $literal $($arg)*);
+        }
+    };
 }
 
 #[cfg(test)]

@@ -1,0 +1,20 @@
+Running tests/v0-fail/backandforeground.cli ...
+
+exit 2
+---
+(no output)
+---
+❌ FAIL: exit status: 2
+ → exit 2
+
+(background) exit 1
+---
+(no output)
+---
+❌ FAIL: exit status: 1
+ → exit 1
+
+tests/v0-fail/backandforeground.cli FAILED
+Error: exit status: 1
+
+1/1 test(s) failed

@@ -1,0 +1,13 @@
+Running tests/v0-fail/exit_fail.cli ...
+
+exit 1
+---
+(no output)
+---
+❌ FAIL: exit status: 1
+ → exit 1
+
+tests/v0-fail/exit_fail.cli FAILED
+Error: exit status: 1
+
+1/1 test(s) failed

@@ -1,0 +1,75 @@
+Running tests/v0/any.cli ...
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
+printf "a\nb\nc\nd\ne\n"
+---
+a
+b
+c
+d
+e
+---
+✅ OK
+
+printf "start\n1\n2\nend\nstart\n1\n2\nend\n"
+---
+start
+1
+2
+end
+start
+1
+2
+end
+---
+✅ OK
+
+tests/v0/any.cli PASSED
+1 test(s) passed
