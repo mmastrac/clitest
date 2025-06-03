@@ -4,11 +4,11 @@ use std::{
     process::ExitStatus,
     sync::{Arc, Mutex, atomic::AtomicBool},
     thread::ScopedJoinHandle,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use grok::Grok;
-use keepcalm::{SharedMut, project_cast};
+use keepcalm::SharedMut;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::{Color, ColorChoice, WriteColor};
 
@@ -697,6 +697,8 @@ pub enum ScriptRunError {
     Killed,
     #[error("background process took too long to finish")]
     BackgroundProcessTookTooLong,
+    #[error("retry took too long to finish")]
+    RetryTookTooLong,
 }
 
 impl ScriptRunError {
@@ -710,6 +712,7 @@ impl ScriptRunError {
             Self::Killed => "Killed".to_string(),
             Self::BackgroundProcessTookTooLong => "BackgroundProcessTookTooLong".to_string(),
             Self::ExpansionError(e) => "ExpansionError".to_string(),
+            Self::RetryTookTooLong => "RetryTookTooLong".to_string(),
         }
     }
 }
@@ -751,6 +754,7 @@ pub enum ScriptBlock {
     Defer(Vec<ScriptBlock>),
     If(IfCondition, Vec<ScriptBlock>),
     For(ForCondition, Vec<ScriptBlock>),
+    Retry(Vec<ScriptBlock>),
 }
 
 impl ScriptBlock {
@@ -917,6 +921,49 @@ impl ScriptBlock {
                 }
                 Ok(results)
             }
+            ScriptBlock::Retry(blocks) => {
+                let start = Instant::now();
+                let mut backoff = Duration::from_millis(100);
+
+                cwrite!(context.stream(), fg = Color::Green, "retry: ");
+                cwriteln!(context.stream(), "running...");
+
+                loop {
+                    let mut nested_context = context.new_background();
+                    match Self::run_blocks(&mut nested_context, blocks) {
+                        Ok(results) => {
+                            let mut all_ok = true;
+                            for result in results {
+                                if !result.evaluate(&mut nested_context).is_ok() {
+                                    all_ok = false;
+                                    break;
+                                }
+                            }
+                            if all_ok {
+                                let output = nested_context.take_output();
+                                cwrite!(context.stream(), fg = Color::Green, "retry: ");
+                                cwriteln!(context.stream(), "success");
+                                cwriteln!(context.stream());
+                                cwriteln!(context.stream(), "{output}");
+                                return Ok(vec![]);
+                            }
+                        }
+                        Err(_) => {}
+                    }
+
+                    if start.elapsed() > Duration::from_secs(3) {
+                        let output = nested_context.take_output();
+                        cwrite!(context.stream(), fg = Color::Green, "retry: ");
+                        cwriteln!(context.stream(), fg = Color::Red, "timed out");
+                        cwriteln!(context.stream());
+                        cwriteln!(context.stream(), "{output}");
+                        cwriteln_rule!(context.stream());
+                        return Err(ScriptRunError::RetryTookTooLong);
+                    }
+                    std::thread::sleep(backoff);
+                    backoff *= 2;
+                }
+            }
             _ => unreachable!(),
         }
     }
@@ -950,6 +997,11 @@ impl Serialize for ScriptBlock {
                 let mut ser = serializer.serialize_map(Some(2))?;
                 ser.serialize_entry("for", condition)?;
                 ser.serialize_entry("blocks", blocks)?;
+                ser.end()
+            }
+            ScriptBlock::Retry(blocks) => {
+                let mut ser = serializer.serialize_map(Some(1))?;
+                ser.serialize_entry("retry", blocks)?;
                 ser.end()
             }
         }

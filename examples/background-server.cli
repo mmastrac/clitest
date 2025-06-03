@@ -1,13 +1,6 @@
 #!/usr/bin/env clitest --v0
 
-$ mktemp -d
-%SET TEMP_DIR
-%SET PWD
-*
-
-defer {
-    $ rm -rf $TEMP_DIR
-}
+using tempdir;
 
 background {
     $ python3 -m http.server 61123
@@ -20,17 +13,16 @@ background {
     }
 }
 
-$ until curl -s -o /dev/null -w "%{http_code}" http://localhost:61123/alive.html | grep -q "404"; do \
-    echo "Waiting for server to start..."; \
-    sleep 0.1; \
-done
-*
+$ echo "ALIVE" > alive.html
+
+retry {
+    $ curl -s -w "%{http_code}" http://localhost:61123/alive.html
+    ! ALIVE
+    ! 200
+}
 
 $ echo "Hello, world!" > index.html
-*
-
 $ echo "Other file" > other.html
-*
 
 $ curl -s http://localhost:61123/index.html
 %EXIT any

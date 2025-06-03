@@ -642,6 +642,8 @@ fn parse_normalized_script_v0_commands(
                 }
             } else if block_type == "background" {
                 commands.push(ScriptBlock::Background(blocks));
+            } else if block_type == "retry" {
+                commands.push(ScriptBlock::Retry(blocks));
             } else if block_type == "defer" {
                 commands.push(ScriptBlock::Defer(blocks));
             } else {

@@ -28,6 +28,7 @@ The test files use the following syntax:
 - `background { ... }` - Run the enclosed commands in the background, killing
   them when the current block finishes
 - `defer { ... }` - Run the enclosed commands after the test has finished
+- `retry { ... }` - Run the enclosed commands until they succeed or the test times out
 - `for <var> in <list> { ... }` - Run the enclosed commands for each item in the list
 - `if <condition> { ... }` - Run the enclosed commands if the condition is true
 - `$ <command>` - Shell command to execute
