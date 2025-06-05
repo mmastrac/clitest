@@ -1,0 +1,11 @@
+[book]
+authors = ["Matt Mastracci"]
+language = "en"
+src = "src"
+title = "clitest Documentation"
+
+[preprocessor.clitest]
+
+[output.html]
+
+[output.markdown]

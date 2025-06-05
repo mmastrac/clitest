@@ -610,7 +610,10 @@ fn parse_normalized_script_v0_commands(
 ) -> Result<Vec<ScriptBlock>, ScriptError> {
     let mut commands = vec![];
     while let Some((command, remaining)) = segments.split_first() {
-        debug_assert!(command.is_command_block(), "{command:?}");
+        debug_assert!(
+            command.is_command_block(),
+            "not a command block: {command:?}"
+        );
 
         if let ScriptV0Segment::SubBlock(_, block_type, args, sub_segments) = command {
             let blocks = parse_normalized_script_v0_commands(

@@ -134,6 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             show_line_numbers: args.show_line_numbers,
             quiet: args.quiet,
             no_color: false,
+            timeout: None,
         };
 
         let mut context = ScriptRunContext::new(args, &script.script_dir);

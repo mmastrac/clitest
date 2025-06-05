@@ -16,6 +16,8 @@ use crate::command::CommandLine;
 use crate::output::*;
 use crate::{cwrite, cwriteln, cwriteln_rule};
 
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ScriptLocation {
     pub file: ScriptFile,
@@ -92,6 +94,7 @@ pub struct ScriptRunArgs {
     pub show_line_numbers: bool,
     pub runner: Option<String>,
     pub quiet: bool,
+    pub timeout: Option<Duration>,
     pub no_color: bool,
 }
 
@@ -179,7 +182,7 @@ struct ScriptOutputLock<'a> {
 #[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
-    envs: HashMap<String, String>,
+    pub envs: HashMap<String, String>,
     background: bool,
     #[debug(skip)]
     kill: ScriptKillReceiver,
@@ -719,7 +722,8 @@ impl ScriptRunError {
 
 impl Script {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
-        ScriptBlock::run_blocks(context, &self.commands)?;
+        let v = ScriptBlock::run_blocks(context, &self.commands)?;
+        assert!(v.is_empty(), "script did not run to completion: {v:?}");
         Ok(())
     }
 }
@@ -842,7 +846,7 @@ impl ScriptBlock {
                                 );
                                 warned = true;
                             }
-                            if start.elapsed() > std::time::Duration::from_secs(30) {
+                            if start.elapsed() > context.args.timeout.unwrap_or(DEFAULT_TIMEOUT) {
                                 cwriteln!(
                                     context.stream(),
                                     fg = Color::Red,
@@ -951,7 +955,7 @@ impl ScriptBlock {
                         Err(_) => {}
                     }
 
-                    if start.elapsed() > Duration::from_secs(3) {
+                    if start.elapsed() > context.args.timeout.unwrap_or(DEFAULT_TIMEOUT) {
                         let output = nested_context.take_output();
                         cwrite!(context.stream(), fg = Color::Green, "retry: ");
                         cwriteln!(context.stream(), fg = Color::Red, "timed out");
