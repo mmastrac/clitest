@@ -137,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             timeout: None,
         };
 
-        let mut context = ScriptRunContext::new(args, &script.script_dir);
+        let mut context = ScriptRunContext::new(args, &script.original_path.file);
 
         if context.args.quiet {
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
