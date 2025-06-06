@@ -104,10 +104,22 @@ pub struct ScriptOutput {
     stream: SharedMut<Box<dyn WriteColorAny>>,
 }
 
-trait WriteColorAny: WriteColor + Send + Sync + std::any::Any + 'static + std::fmt::Debug {}
+trait WriteColorAny: WriteColor + Send + Sync + std::any::Any + 'static + std::fmt::Debug {
+    /// Workaround for lack of upcasting
+    fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String>;
+}
 
-impl WriteColorAny for termcolor::StandardStream {}
-impl WriteColorAny for termcolor::Buffer {}
+impl WriteColorAny for termcolor::StandardStream {
+    fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String> {
+        Err("not a buffer".to_string())
+    }
+}
+
+impl WriteColorAny for termcolor::Buffer {
+    fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String> {
+        Ok(*self)
+    }
+}
 
 impl ScriptOutput {
     pub fn no_color() -> Self {
@@ -130,8 +142,7 @@ impl ScriptOutput {
 
     pub fn take_buffer(self) -> String {
         let stream = SharedMut::try_unwrap(self.stream).unwrap();
-        let stream = stream as Box<dyn std::any::Any>;
-        let stream = stream.downcast::<termcolor::Buffer>().unwrap();
+        let stream = stream.take_buffer().expect("wrong stream type");
         String::from_utf8_lossy(&stream.into_inner()).to_string()
     }
 }
