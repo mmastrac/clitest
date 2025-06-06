@@ -5,7 +5,7 @@ members = ["tools/*", "."]
 [package]
 name = "clitest"
 license = "MIT/Apache-2.0"
-version = "0.1.20"
+version = "0.1.21"
 authors = ["Matt Mastracci <matthew@mastracci.com>"]
 edition = "2024"
 description = "CLI-based testing."

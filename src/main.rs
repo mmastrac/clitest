@@ -56,6 +56,7 @@ struct Args {
 struct ScriptToRun {
     original_path: ScriptFile,
     script_dir: PathBuf,
+    canonical_path: PathBuf,
     script: Script,
 }
 
@@ -76,6 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(ScriptToRun {
                 original_path: script_file.clone(),
                 script_dir,
+                canonical_path,
                 script,
             })
         })
@@ -137,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             timeout: None,
         };
 
-        let mut context = ScriptRunContext::new(args, &script.original_path.file);
+        let mut context = ScriptRunContext::new(args, &script.canonical_path);
 
         if context.args.quiet {
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
