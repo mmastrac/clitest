@@ -39,7 +39,7 @@ jobs:
           crate: mdbook
           version: ${{ env.MDBOOK_VERSION }}
       - name: Cargo build
-        run: cargo build --bins
+        run: cargo build --bin mdbook-clitest -p mdbook-clitest
       - name: Add target/ to path
         run: echo "PATH=$PATH:$PWD/target/debug/" >> "$GITHUB_ENV"
       - name: Setup Pages
