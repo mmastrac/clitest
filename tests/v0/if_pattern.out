@@ -1,14 +1,14 @@
 Running tests/v0/if_pattern.cli ...
 
-echo $TARGET_OS
+<ignore>
 ---
-linux
+<ignore>
 ---
 ✅ OK
 
-uname -a
+<ignore>
 ---
-Linux kame 6.11.0-26-generic #26~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Apr 17 19:20:47 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+<ignore>
 ---
 ✅ OK
 

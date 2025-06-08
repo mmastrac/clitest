@@ -1,18 +1,20 @@
 #!/usr/bin/env clitest --v0
 
-$ echo $TARGET_OS
+# Mark this line as <ignore> for the exact output test.
+$ echo "<ignore> $TARGET_OS"
 *
 
-$ uname -a
+# Mark this line as <ignore> for the exact output test.
+$ echo '<ignore>' `uname -a`
 if TARGET_OS == "linux" {
-    ! Linux %{GREEDYDATA} GNU/Linux
+    ! <ignore> Linux %{GREEDYDATA} GNU/Linux
 }
 if TARGET_OS == "macos" {
-    ! Darwin %{GREEDYDATA}
+    ! <ignore> Darwin %{GREEDYDATA}
 }
 if TARGET_OS == "windows" {
     choice {
-        ! %{GREEDYDATA}Windows%{GREEDYDATA}
-        ! MINGW%{GREEDYDATA}
+        ! <ignore> %{GREEDYDATA}Windows%{GREEDYDATA}
+        ! <ignore> MINGW%{GREEDYDATA}
     }
 }

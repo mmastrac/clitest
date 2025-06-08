@@ -112,31 +112,51 @@ fn munge_output(s: &str) -> String {
         .display()
         .to_string();
 
+    let tmp = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .display()
+        .to_string();
+
     // Replace any line that starts with "───" with "---"
     let mut output = String::new();
     for line in s.lines() {
-        if line.starts_with("───") {
-            output.push_str("---");
-        } else {
-            let line = line.replace(&root, "<root>");
-            if line.contains("/tmp/") {
-                // Replace /tmp/<filename> with <tmp>
-                let tmp = line.split("/tmp/").nth(1).unwrap();
-                let tmp = tmp
-                    .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.')
-                    .nth(0)
-                    .unwrap();
+        munge_line(&root, &tmp, &mut output, line);
+    }
+    output
+}
+
+fn munge_line(root: &String, tmp: &String, output: &mut String, line: &str) {
+    if line.starts_with("───") {
+        output.push_str("---\n");
+    } else if line.contains("<ignore>") {
+        output.push_str("<ignore>\n");
+    } else {
+        let line = line.replace(root, "<root>");
+        if line.contains(tmp) {
+            let tmp_char = |c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.';
+
+            // Replace /tmp or /tmp/<filename> with <tmp>
+            let tmp_path = line.split_once(tmp).unwrap().1;
+            let tmp_path = if tmp_path.is_empty() || tmp_path.chars().nth(0).unwrap() != '/' {
+                None
+            } else {
+                tmp_path[1..].split(tmp_char).nth(0)
+            };
+
+            if let Some(tmp_path) = tmp_path {
                 output.push_str(
-                    line.replace(format!("/tmp/{}", tmp).as_str(), "<tmp>")
+                    line.replace(format!("{tmp}/{tmp_path}").as_str(), "<tmp>")
                         .as_str(),
                 );
             } else {
-                output.push_str(&line);
+                output.push_str(line.replace(tmp, "<tmp>").as_str());
             }
+        } else {
+            output.push_str(&line);
         }
         output.push('\n');
     }
-    output
 }
 
 fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
@@ -166,5 +186,32 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
         false
     } else {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_munge_output() {
+        let root = "/root".to_string();
+        let tmp = "/tmp".to_string();
+
+        let mut output = String::new();
+        munge_line(&root, &tmp, &mut output, "This is /tmp");
+        assert_eq!(output, "This is <tmp>\n");
+
+        let mut output = String::new();
+        munge_line(&root, &tmp, &mut output, "This is /tmp!");
+        assert_eq!(output, "This is <tmp>!\n");
+
+        let mut output = String::new();
+        munge_line(&root, &tmp, &mut output, "This is /tmp/foo");
+        assert_eq!(output, "This is <tmp>\n");
+
+        let mut output = String::new();
+        munge_line(&root, &tmp, &mut output, "This is /tmp/foo!");
+        assert_eq!(output, "This is <tmp>!\n");
     }
 }
