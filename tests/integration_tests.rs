@@ -118,44 +118,62 @@ fn munge_output(s: &str) -> String {
         .display()
         .to_string();
 
+    let apple_path = tmp.strip_prefix("/private");
+    let tmps = if tmp != "/tmp" {
+        if let Some(apple_path) = apple_path {
+            vec![apple_path, &tmp, "/tmp"]
+        } else {
+            vec![&tmp, "/tmp"]
+        }
+    } else {
+        vec![tmp.as_str()]
+    };
+
     // Replace any line that starts with "───" with "---"
     let mut output = String::new();
     for line in s.lines() {
-        munge_line(&root, &tmp, &mut output, line);
+        munge_line(&root, &tmps, &mut output, line);
     }
     output
 }
 
-fn munge_line(root: &String, tmp: &String, output: &mut String, line: &str) {
+fn munge_line(root: &String, tmp: &[&str], output: &mut String, line: &str) {
     if line.starts_with("───") {
         output.push_str("---\n");
     } else if line.contains("<ignore>") {
         output.push_str("<ignore>\n");
     } else {
         let line = line.replace(root, "<root>");
-        if line.contains(tmp) {
-            let tmp_char = |c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.';
-
-            // Replace /tmp or /tmp/<filename> with <tmp>
-            let tmp_path = line.split_once(tmp).unwrap().1;
-            let tmp_path = if tmp_path.is_empty() || tmp_path.chars().nth(0).unwrap() != '/' {
-                None
-            } else {
-                tmp_path[1..].split(tmp_char).nth(0)
-            };
-
-            if let Some(tmp_path) = tmp_path {
-                output.push_str(
-                    line.replace(format!("{tmp}/{tmp_path}").as_str(), "<tmp>")
-                        .as_str(),
-                );
-            } else {
-                output.push_str(line.replace(tmp, "<tmp>").as_str());
+        for tmp in tmp {
+            if line.contains(tmp) {
+                munge_tmp(tmp, output, &line);
+                output.push('\n');
+                return;
             }
-        } else {
-            output.push_str(&line);
         }
+        output.push_str(&line);
         output.push('\n');
+    }
+}
+
+fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
+    let tmp_char = |c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.';
+
+    // Replace /tmp or /tmp/<filename> with <tmp>
+    let tmp_path = line.split_once(tmp).unwrap().1;
+    let tmp_path = if tmp_path.is_empty() || tmp_path.chars().nth(0).unwrap() != '/' {
+        None
+    } else {
+        tmp_path[1..].split(tmp_char).nth(0)
+    };
+
+    if let Some(tmp_path) = tmp_path {
+        output.push_str(
+            line.replace(format!("{tmp}/{tmp_path}").as_str(), "<tmp>")
+                .as_str(),
+        );
+    } else {
+        output.push_str(line.replace(tmp, "<tmp>").as_str());
     }
 }
 

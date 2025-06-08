@@ -46,6 +46,12 @@ impl ScriptFile {
     pub fn new(file: PathBuf) -> Self {
         if cfg!(unix) {
             if let Ok(canonical) = file.canonicalize() {
+                let cwd = std::env::current_dir().unwrap();
+                if canonical.starts_with(&cwd) {
+                    return Self {
+                        file: Arc::new(file),
+                    };
+                }
                 if let Some(home) = dirs::home_dir() {
                     if canonical.starts_with(&home) {
                         if let Some(diff) = pathdiff::diff_paths(&canonical, home) {
@@ -1043,8 +1049,15 @@ impl InternalCommand {
             InternalCommand::UsingTempdir => {
                 let current_pwd = context.pwd();
                 let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
+                let mut tempdir_path = tempdir.path().canonicalize()?;
+                let temp = std::env::temp_dir().canonicalize()?;
+                if cfg!(target_vendor = "apple") {
+                    if let Ok(base) = tempdir_path.strip_prefix(temp) {
+                        tempdir_path = Path::new("/tmp").join(base);
+                    }
+                }
                 cwrite!(context.stream(), fg = Color::Yellow, "using tempdir: ");
-                cwriteln!(context.stream(), "{}", tempdir.path().to_string_lossy());
+                cwriteln!(context.stream(), "{}", tempdir_path.to_string_lossy());
                 cwriteln!(context.stream());
                 context.envs.insert(
                     "PWD".to_string(),
@@ -1055,7 +1068,7 @@ impl InternalCommand {
                         context.stream(),
                         fg = Color::Yellow,
                         "removing {} && cd {}",
-                        tempdir.path().to_string_lossy(),
+                        tempdir_path.to_string_lossy(),
                         current_pwd.to_string_lossy()
                     );
                     cwriteln!(context.stream());
