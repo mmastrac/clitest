@@ -36,7 +36,7 @@ jobs:
       - name: Install mdBook from crates.io
         uses: baptiste0928/cargo-install@v3
         with:
-          crate: cargo-hack
+          crate: mdbook
           version: ${{ env.MDBOOK_VERSION }}
       - name: Cargo build
         run: cargo build --bins
