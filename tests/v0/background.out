@@ -9,19 +9,10 @@ mktemp
 sleep .2 && cat $TEMP_FILE
 ---
 background
-background
-background
-background
-background
-background
-background
-background
-background
-background
 ---
 ✅ OK
 
-(background) for i in {1..10}; do printf "background\n" >> $TEMP_FILE; done && sleep 10
+(background) printf "background\n" >> $TEMP_FILE && sleep 10 && printf "background\n" >> $TEMP_FILE
 ---
 (no output)
 ---
