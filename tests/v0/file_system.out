@@ -1,37 +1,34 @@
 Running tests/v0/file_system.cli ...
 
-rm -rf <tmp> || printf "no dir to remove\n"
+using tempdir: <tmp>
+
+mkdir "testing-dir"
 ---
 (no output)
 ---
 ✅ OK
 
-mkdir <tmp>
----
-(no output)
----
-✅ OK
-
-cd <tmp> && ls -a1
+ls -a1
 ---
 .
 ..
+testing-dir
 ---
 ✅ OK
 
-printf "hello world\n" > <tmp>/file1
+printf "hello world\n" > testing-dir/file1
 ---
 (no output)
 ---
 ✅ OK
 
-printf "world\n" > <tmp>/file2
+printf "world\n" > testing-dir/file2
 ---
 (no output)
 ---
 ✅ OK
 
-ls -a1 <tmp>
+ls -a1 testing-dir
 ---
 .
 ..
@@ -40,14 +37,14 @@ file2
 ---
 ✅ OK
 
-ls -1 "<tmp>/"*
+ls -1 "testing-dir/"*
 ---
-<tmp>/file1
-<tmp>/file2
+testing-dir/file1
+testing-dir/file2
 ---
 ✅ OK
 
-ls -a1 <tmp>
+ls -a1 testing-dir
 ---
 .
 ..
@@ -56,7 +53,7 @@ file2
 ---
 ✅ OK
 
-ls -a1 <tmp> 1>&2
+ls -a1 testing-dir 1>&2
 ---
 .
 ..
@@ -64,6 +61,8 @@ file1
 file2
 ---
 ✅ OK
+
+(cleanup) removing <tmp> && cd <root>/tests/v0
 
 tests/v0/file_system.cli PASSED
 1 test(s) passed

@@ -14,17 +14,19 @@
 
 pattern FILENAME [\w\-\.]+
 
-$ rm -rf /tmp/testing-dir || printf "no dir to remove\n"
-$ mkdir /tmp/testing-dir
+using tempdir;
 
-$ cd /tmp/testing-dir && ls -a1
+$ mkdir "testing-dir"
+
+$ ls -a1
 ! .
 ! ..
+! testing-dir
 
-$ printf "hello world\n" > /tmp/testing-dir/file1
-$ printf "world\n" > /tmp/testing-dir/file2
+$ printf "hello world\n" > testing-dir/file1
+$ printf "world\n" > testing-dir/file2
 
-$ ls -a1 /tmp/testing-dir
+$ ls -a1 testing-dir
 !!!
 .
 ..
@@ -32,20 +34,20 @@ file1
 file2
 !!!
 
-$ ls -1 "/tmp/testing-dir/"*
+$ ls -1 "testing-dir/"*
 !!!
-/tmp/testing-dir/file1
-/tmp/testing-dir/file2
+testing-dir/file1
+testing-dir/file2
 !!!
 
 # Test with a pattern that matches a filename
-$ ls -a1 /tmp/testing-dir
+$ ls -a1 testing-dir
 repeat {
     ! %{FILENAME}
 }
 
 # Test with a pattern that matches a filename
-$ ls -a1 /tmp/testing-dir 1>&2
+$ ls -a1 testing-dir 1>&2
 repeat {
     ! %{FILENAME}
 }
