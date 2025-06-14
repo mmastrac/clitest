@@ -136,6 +136,8 @@ fn munge_output(s: &str) -> String {
     // On Windows, use \ for everything, then replace back to / for final test
     #[cfg(windows)]
     let s = &s.replace('/', r"\");
+    #[cfg(windows)]
+    let s = s.replace(r"\\?\", "");
     for line in s.lines() {
         munge_line(&root, &tmps, &mut output, line);
     }
@@ -216,6 +218,10 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
         cprintln_rule!();
         let comparison = pretty_assertions::StrComparison::new(&a, &b);
         cprintln!("{}", comparison);
+        cprintln_rule!();
+        cprintln!("\nOriginal output before munge:");
+        cprintln_rule!();
+        cprintln!("{}", output);
         cprintln_rule!();
         false
     } else {
