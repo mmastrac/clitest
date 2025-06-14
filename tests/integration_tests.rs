@@ -110,13 +110,15 @@ fn munge_output(s: &str) -> String {
         .canonicalize()
         .unwrap()
         .display()
-        .to_string();
+        .to_string()
+        .replace(r"\\?\", "");
 
     let tmp = std::env::temp_dir()
         .canonicalize()
         .unwrap()
         .display()
-        .to_string();
+        .to_string()
+        .replace(r"\\?\", "");
 
     let apple_path = tmp.strip_prefix("/private");
     let tmps = if tmp != "/tmp" {
