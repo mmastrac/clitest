@@ -123,7 +123,7 @@ fn munge_output(s: &str) -> String {
         if let Some(apple_path) = apple_path {
             vec![apple_path, &tmp, "/tmp"]
         } else if cfg!(windows) {
-            vec!["%TEMP%", &tmp, "/tmp"]
+            vec!["%TEMP%", &tmp, r"\tmp"]
         } else {
             vec![&tmp, "/tmp"]
         }
