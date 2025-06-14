@@ -1097,7 +1097,7 @@ impl InternalCommand {
                     }
                     context
                         .envs
-                        .insert("PWD".to_string(), current_pwd.to_string());
+                        .insert("PWD".to_string(), current_pwd.env_string());
                     Ok::<_, ScriptRunError>(())
                 })))
             }
@@ -1108,7 +1108,7 @@ impl InternalCommand {
                 cwriteln!(context.stream());
                 let current_pwd = context.pwd();
                 let new_pwd = current_pwd.join(dir);
-                context.envs.insert("PWD".to_string(), new_pwd.to_string());
+                context.envs.insert("PWD".to_string(), new_pwd.env_string());
                 Ok(None)
             }
             InternalCommand::Set(name, value) => {
