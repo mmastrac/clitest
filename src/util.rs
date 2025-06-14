@@ -60,6 +60,12 @@ impl<'de> serde::Deserialize<'de> for NicePathBuf {
     }
 }
 
+impl From<&'_ NicePathBuf> for NicePathBuf {
+    fn from(path: &NicePathBuf) -> Self {
+        path.clone()
+    }
+}
+
 impl NicePathBuf {
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
@@ -173,6 +179,12 @@ impl NiceTempDir {
 impl std::fmt::Display for NiceTempDir {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", NicePathBuf::new(self.path.path()))
+    }
+}
+
+impl From<&'_ NiceTempDir> for NicePathBuf {
+    fn from(tempdir: &NiceTempDir) -> Self {
+        NicePathBuf::new(tempdir.path.path())
     }
 }
 
