@@ -133,6 +133,9 @@ fn munge_output(s: &str) -> String {
 
     // Replace any line that starts with "───" with "---"
     let mut output = String::new();
+    // On Windows, use \ for everything, then replace back to / for final test
+    #[cfg(windows)]
+    let s = &s.replace('/', r"\");
     for line in s.lines() {
         munge_line(&root, &tmps, &mut output, line);
     }
