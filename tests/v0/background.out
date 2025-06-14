@@ -1,10 +1,8 @@
 Running tests/v0/background.cli ...
 
-mktemp
----
-<tmp>
----
-✅ OK
+using tempdir: <tmp>
+
+set TEMP_FILE background.log
 
 sleep .2 && cat $TEMP_FILE
 ---
@@ -17,6 +15,8 @@ background
 (no output)
 ---
 ✅ OK (signal: 1 (SIGHUP))
+
+(cleanup) removing <tmp> && cd <root>/tests/v0
 
 tests/v0/background.cli PASSED
 1 test(s) passed

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
-    path::{Path, PathBuf},
+    path::Path,
     process::ExitStatus,
     sync::{Arc, Mutex, atomic::AtomicBool},
     thread::ScopedJoinHandle,
@@ -12,8 +12,11 @@ use keepcalm::SharedMut;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::{Color, ColorChoice, WriteColor};
 
-use crate::command::CommandLine;
 use crate::output::*;
+use crate::{
+    command::CommandLine,
+    util::{NicePathBuf, NiceTempDir},
+};
 use crate::{cwrite, cwriteln, cwriteln_rule};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -36,51 +39,18 @@ impl std::fmt::Display for ScriptLocation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(derive_more::Debug, derive_more::Display, Clone, Serialize, PartialEq, Eq)]
+#[display("{}", file)]
 pub struct ScriptFile {
-    pub file: Arc<PathBuf>,
+    pub file: Arc<NicePathBuf>,
 }
 
 impl ScriptFile {
     /// Normalizes/prettifies the path if we can.
-    pub fn new(file: PathBuf) -> Self {
-        if cfg!(unix) {
-            if let Ok(canonical) = file.canonicalize() {
-                let cwd = std::env::current_dir().unwrap();
-                if canonical.starts_with(&cwd) {
-                    return Self {
-                        file: Arc::new(file),
-                    };
-                }
-                if let Some(home) = dirs::home_dir() {
-                    if canonical.starts_with(&home) {
-                        if let Some(diff) = pathdiff::diff_paths(&canonical, home) {
-                            return Self {
-                                file: Arc::new(Path::new("~").join(diff)),
-                            };
-                        }
-                    }
-                }
-                if let Ok(tmp) = Path::new("/tmp").canonicalize() {
-                    if canonical.starts_with(&tmp) {
-                        if let Some(diff) = pathdiff::diff_paths(&canonical, &tmp) {
-                            return Self {
-                                file: Arc::new(Path::new("/tmp").join(diff)),
-                            };
-                        }
-                    }
-                }
-            }
-        }
+    pub fn new(file: impl AsRef<Path>) -> Self {
         Self {
-            file: Arc::new(file),
+            file: Arc::new(NicePathBuf::new(file)),
         }
-    }
-}
-
-impl std::fmt::Display for ScriptFile {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.file.display())
     }
 }
 
@@ -235,12 +205,12 @@ impl ScriptRunContext {
         }
     }
 
-    pub fn pwd(&self) -> PathBuf {
+    pub fn pwd(&self) -> NicePathBuf {
         self.envs
             .get("PWD")
             .cloned()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().expect("Couldn't get current directory"))
+            .map(NicePathBuf::from)
+            .unwrap_or_else(|| NicePathBuf::cwd())
     }
 
     pub fn take_output(self) -> String {
@@ -904,7 +874,8 @@ impl ScriptBlock {
 
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<Vec<ScriptResult>, ScriptRunError> {
         let pwd = context.pwd();
-        if !matches!(std::fs::exists(&pwd), Ok(true)) {
+        let res = pwd.exists();
+        if !matches!(res, Ok(true)) {
             let initial_pwd = context.envs["INITIAL_PWD"].clone();
             cwriteln!(
                 context.stream(),
@@ -1048,32 +1019,41 @@ impl InternalCommand {
         match self.clone() {
             InternalCommand::UsingTempdir => {
                 let current_pwd = context.pwd();
-                let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
-                let mut tempdir_path = tempdir.path().canonicalize()?;
-                let temp = std::env::temp_dir().canonicalize()?;
-                if cfg!(target_vendor = "apple") {
-                    if let Ok(base) = tempdir_path.strip_prefix(temp) {
-                        tempdir_path = Path::new("/tmp").join(base);
-                    }
-                }
+                let tempdir = NiceTempDir::new();
                 cwrite!(context.stream(), fg = Color::Yellow, "using tempdir: ");
-                cwriteln!(context.stream(), "{}", tempdir_path.to_string_lossy());
+                cwriteln!(context.stream(), "{}", tempdir);
                 cwriteln!(context.stream());
-                context.envs.insert(
-                    "PWD".to_string(),
-                    tempdir.path().to_string_lossy().to_string(),
-                );
+                context.envs.insert("PWD".to_string(), tempdir.env_string());
+                let pwd = context.pwd();
+                if !pwd.exists()? {
+                    return Err(ScriptRunError::IO(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("newly created tempdir does not exist: {pwd:?}"),
+                    )));
+                }
                 Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
                     cwriteln!(
                         context.stream(),
                         fg = Color::Yellow,
                         "removing {} && cd {}",
-                        tempdir_path.to_string_lossy(),
-                        current_pwd.to_string_lossy()
+                        tempdir,
+                        current_pwd
                     );
                     cwriteln!(context.stream());
-                    std::fs::remove_dir_all(&tempdir)?;
-                    drop(tempdir);
+                    if !tempdir.exists()? {
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Red,
+                            "tempdir does not exist: {tempdir}"
+                        );
+                    }
+                    if let Err(e) = tempdir.remove_dir_all() {
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Red,
+                            "error removing tempdir: {e:?}"
+                        );
+                    }
                     Ok::<_, ScriptRunError>(())
                 })))
             }
@@ -1086,45 +1066,38 @@ impl InternalCommand {
                 } else {
                     cwrite!(context.stream(), fg = Color::Yellow, "using dir: ");
                 }
-                cwriteln!(context.stream(), "{}", new_pwd.to_string_lossy());
+                cwriteln!(context.stream(), "{}", new_pwd);
                 cwriteln!(context.stream());
 
                 if new {
-                    std::fs::create_dir_all(&new_pwd)?;
-                } else if !new_pwd.exists() {
+                    new_pwd.create_dir_all()?;
+                } else if !new_pwd.exists()? {
                     return Err(ScriptRunError::IO(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         "directory does not exist",
                     )));
                 }
-                context
-                    .envs
-                    .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                context.envs.insert("PWD".to_string(), new_pwd.env_string());
                 Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
                     if new {
                         cwriteln!(
                             context.stream(),
                             fg = Color::Yellow,
                             "removing {} && cd {}",
-                            new_pwd.to_string_lossy(),
-                            current_pwd.to_string_lossy()
+                            new_pwd,
+                            current_pwd
                         );
                         cwriteln!(context.stream());
                     } else {
-                        cwriteln!(
-                            context.stream(),
-                            fg = Color::Yellow,
-                            "cd {}",
-                            current_pwd.to_string_lossy()
-                        );
+                        cwriteln!(context.stream(), fg = Color::Yellow, "cd {}", current_pwd);
                         cwriteln!(context.stream());
                     }
                     if new {
-                        std::fs::remove_dir_all(&new_pwd)?;
+                        new_pwd.remove_dir_all()?;
                     }
                     context
                         .envs
-                        .insert("PWD".to_string(), current_pwd.to_string_lossy().to_string());
+                        .insert("PWD".to_string(), current_pwd.to_string());
                     Ok::<_, ScriptRunError>(())
                 })))
             }
@@ -1135,9 +1108,7 @@ impl InternalCommand {
                 cwriteln!(context.stream());
                 let current_pwd = context.pwd();
                 let new_pwd = current_pwd.join(dir);
-                context
-                    .envs
-                    .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                context.envs.insert("PWD".to_string(), new_pwd.to_string());
                 Ok(None)
             }
             InternalCommand::Set(name, value) => {
@@ -1428,7 +1399,7 @@ repeat {
 }
 "#;
 
-        let script = parse_script(ScriptFile::new("test.cli".into()), script)?;
+        let script = parse_script(ScriptFile::new("test.cli"), script)?;
         assert_eq!(script.commands.len(), 2);
         eprintln!("{:?}", script);
         Ok(())
@@ -1442,7 +1413,7 @@ $ cmd &
     "#;
 
         assert!(matches!(
-            parse_script(ScriptFile::new("test.cli".into()), script),
+            parse_script(ScriptFile::new("test.cli"), script),
             Err(ScriptError {
                 error: ScriptErrorType::BackgroundProcessNotAllowed,
                 ..

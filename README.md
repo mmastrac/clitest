@@ -1,11 +1,11 @@
-# cli-tester
+# `clitest`: A literate CLI testing tool
 
 [![Build](https://img.shields.io/github/actions/workflow/status/mmastrac/clitest/build.yml?branch=master)](https://github.com/mmastrac/clitest/actions/workflows/build.yml)
 [![Book](https://img.shields.io/badge/book-online-blue)](https://mmastrac.github.io/clitest/)
 
-A CLI testing tool that allows you to write tests for command-line applications using a simple syntax.
+A CLI testing tool that allows you to write tests for command-line applications using a simple, literate syntax.
 
-For more information, see the [book](https://mmastrac.github.io/clitest/) which contains a full syntax reference.
+For more information, see the [book](https://mmastrac.github.io/clitest/) which contains a full syntax reference and examples.
 
 ## Installation
 

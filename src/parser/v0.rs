@@ -1070,7 +1070,7 @@ mod tests {
     use super::*;
 
     fn parse_pattern(pattern: &str) -> Result<OutputPattern, ScriptError> {
-        let lines = ScriptLine::parse(ScriptFile::new("test.cli".into()), pattern);
+        let lines = ScriptLine::parse(ScriptFile::new("test.cli"), pattern);
         let segments = segment_script(true, &mut lines.as_slice()).unwrap();
         let normalized = normalize_segments(segments);
         Ok(
@@ -1116,7 +1116,7 @@ mod tests {
         }
         "#;
         let grok = Grok::with_default_patterns();
-        let file = ScriptFile::new("test.cli".into());
+        let file = ScriptFile::new("test.cli");
         let pattern = parse_pattern(pattern).unwrap();
         eprintln!("{pattern:?}");
     }

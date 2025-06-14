@@ -5,6 +5,7 @@ pub mod output;
 pub mod parser;
 pub mod script;
 pub mod term;
+pub mod util;
 
 #[cfg(any(test, feature = "__testing"))]
 pub mod testing {
