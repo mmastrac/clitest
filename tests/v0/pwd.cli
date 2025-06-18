@@ -9,13 +9,7 @@ defer {
     cd $TEMP_DIR;
 
     $ rm -rf $PWD/subdir
-
-    $ pwd
-    *
 }
-
-$ pwd
-! %{PATH}
 
 set TEMP_DIR $PWD;
 
