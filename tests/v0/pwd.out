@@ -8,6 +8,8 @@ pwd
 ---
 ✅ OK
 
+set TEMP_DIR <tmp>
+
 mkdir subdir
 ---
 (no output)

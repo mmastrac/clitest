@@ -15,8 +15,9 @@ defer {
 }
 
 $ pwd
-%SET TEMP_DIR
 ! %{PATH}
+
+set TEMP_DIR $PWD;
 
 $ mkdir subdir
 
