@@ -14,11 +14,7 @@ mkdir subdir
 ---
 ✅ OK
 
-echo $PWD/subdir
----
-<tmp>/subdir
----
-✅ OK
+set PWD <tmp>/subdir
 
 touch file
 ---

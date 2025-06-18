@@ -20,8 +20,7 @@ $ pwd
 
 $ mkdir subdir
 
-$ echo $PWD/subdir
-%SET PWD
-! %{PATH}
+# Avoid using `echo` because msys on Windows will munge the path
+set PWD $PWD/subdir;
 
 $ touch file
