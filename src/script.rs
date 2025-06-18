@@ -948,7 +948,7 @@ impl ScriptBlock {
             ScriptBlock::For(ForCondition::Env(env, values), blocks) => {
                 let mut results = Vec::new();
                 for value in values {
-                    context.set_env(env.clone(), context.expand(value)?);
+                    context.set_env(env, context.expand(value)?);
                     results.extend(Self::run_blocks(context, blocks)?);
                 }
                 Ok(results)
@@ -1152,10 +1152,19 @@ impl InternalCommand {
             InternalCommand::Set(name, value) => {
                 let value = context.expand(value)?;
 
-                cwriteln!(context.stream(), fg = Color::Yellow, "set {name} {value}");
+                context.set_env(&name, &value);
+                let new_value = context.get_env(&name).unwrap_or_default();
+                if new_value != value {
+                    cwriteln!(
+                        context.stream(),
+                        fg = Color::Yellow,
+                        "set {name} {value} (-> {new_value})"
+                    );
+                } else {
+                    cwriteln!(context.stream(), fg = Color::Yellow, "set {name} {value}");
+                }
                 cwriteln!(context.stream());
 
-                context.set_env(name, value);
                 Ok(None)
             }
         }
