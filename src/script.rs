@@ -166,11 +166,18 @@ struct ScriptOutputLock<'a> {
     stream: keepcalm::SharedWriteLock<'a, Box<dyn WriteColorAny>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScriptMode {
+    Normal,
+    Deferred,
+    Background,
+}
+
 #[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
     pub envs: HashMap<String, String>,
-    background: bool,
+    background: ScriptMode,
     #[debug(skip)]
     kill: ScriptKillReceiver,
     #[debug(skip)]
@@ -184,7 +191,7 @@ impl Default for ScriptRunContext {
         Self {
             args: ScriptRunArgs::default(),
             envs: HashMap::new(),
-            background: false,
+            background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output: ScriptOutput::default(),
@@ -198,10 +205,21 @@ impl ScriptRunContext {
         Self {
             args: self.args.clone(),
             envs: self.envs.clone(),
-            background: true,
+            background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output: ScriptOutput::quiet(self.args.no_color),
+        }
+    }
+
+    pub fn new_deferred(&self) -> Self {
+        Self {
+            args: self.args.clone(),
+            envs: self.envs.clone(),
+            background: ScriptMode::Deferred,
+            kill: self.kill.clone(),
+            kill_sender: self.kill_sender.clone(),
+            output: self.output.clone(),
         }
     }
 
@@ -264,7 +282,7 @@ impl ScriptRunContext {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in ${{...}}: {}",
+                                "undefined variable in ${{...}}: {:?} (in {value:?})",
                                 variable
                             )));
                         }
@@ -274,27 +292,27 @@ impl ScriptRunContext {
                     }
                 }
                 State::Dollar => {
-                    if c.is_alphanumeric() {
+                    if c.is_alphanumeric() || c == '_' {
                         state = State::InDollar;
                         variable.push(c);
                     } else if c == '{' {
                         state = State::InCurly;
                     } else {
                         return Err(ScriptRunError::ExpansionError(format!(
-                            "invalid variable: {}",
+                            "invalid variable: {:?} (in {value:?})",
                             c
                         )));
                     }
                 }
                 State::InDollar => {
-                    if c.is_alphanumeric() {
+                    if c.is_alphanumeric() || c == '_' {
                         variable.push(c);
                     } else {
                         if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in $...: {}",
+                                "undefined variable in $...: {:?} (in {value:?})",
                                 variable
                             )));
                         }
@@ -344,6 +362,7 @@ impl ScriptRunContext {
     }
 }
 
+#[derive(Clone)]
 pub struct ScriptKillReceiver {
     kill_receiver: Arc<AtomicBool>,
 }
@@ -539,7 +558,7 @@ impl ScriptRunContext {
         Self {
             args,
             envs,
-            background: false,
+            background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output,
@@ -758,7 +777,7 @@ impl ScriptBlock {
         blocks: &[ScriptBlock],
     ) -> Result<Vec<ScriptResult>, ScriptRunError> {
         enum Deferred<'a> {
-            Script(&'a ScriptBlock),
+            Scripts(&'a [ScriptBlock]),
             Internal(
                 Box<
                     dyn FnOnce(&mut ScriptRunContext) -> Result<(), ScriptRunError>
@@ -791,12 +810,12 @@ impl ScriptBlock {
                     ScriptBlock::Defer(blocks) => {
                         // Insert at the front of the queue by extending and
                         // then rotating
-                        for block in blocks {
-                            defer_blocks.push_back(Deferred::Script(block));
-                        }
-                        defer_blocks.rotate_left(blocks.len());
+                        defer_blocks.push_front(Deferred::Scripts(blocks));
                     }
                     ScriptBlock::InternalCommand(command) => {
+                        if context.background == ScriptMode::Deferred {
+                            cwrite!(context.stream(), dimmed = true, "(deferred) ");
+                        }
                         if let Some(f) = command.run(context)? {
                             defer_blocks.push_front(Deferred::Internal(f));
                         }
@@ -812,9 +831,9 @@ impl ScriptBlock {
             }
             for block in defer_blocks {
                 match block {
-                    Deferred::Script(block) => {
-                        cwrite!(context.stream(), dimmed = true, "(deferred) ");
-                        block.run(context)?;
+                    Deferred::Scripts(blocks) => {
+                        let mut context = context.new_deferred();
+                        ScriptBlock::run_blocks(&mut context, blocks)?;
                     }
                     Deferred::Internal(block) => {
                         cwrite!(context.stream(), dimmed = true, "(cleanup) ");
@@ -893,8 +912,11 @@ impl ScriptBlock {
 
         match self {
             ScriptBlock::Command(command) => {
+                if context.background == ScriptMode::Deferred {
+                    cwrite!(context.stream(), dimmed = true, "(deferred) ");
+                }
                 let result = command.run(context)?;
-                if !context.background {
+                if context.background != ScriptMode::Background {
                     result.evaluate(context)?;
                     Ok(vec![])
                 } else {
@@ -960,7 +982,7 @@ impl ScriptBlock {
                     backoff *= 2;
                 }
             }
-            _ => unreachable!(),
+            _ => unreachable!("Unexpected block type: {self:?}"),
         }
     }
 }
@@ -1437,5 +1459,10 @@ $ cmd &
         assert_eq!(context.expand(r#"\${A}"#).unwrap(), "${A}".to_string());
         assert_eq!(context.expand(r#"\\$A"#).unwrap(), r#"\1"#);
         assert_eq!(context.expand(r#"\\${A}"#).unwrap(), r#"\1"#);
+        context
+            .envs
+            .insert("TEMP_DIR".to_string(), "/tmp".to_string());
+        assert_eq!(context.expand("$TEMP_DIR").unwrap(), "/tmp".to_string());
+        assert_eq!(context.expand("${TEMP_DIR}").unwrap(), "/tmp".to_string());
     }
 }

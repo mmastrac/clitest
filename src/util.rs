@@ -1,26 +1,20 @@
 use std::{
     borrow::Cow,
     ffi::OsStr,
-    path::{Component, Path, PathBuf, Prefix, PrefixComponent},
+    path::{Component, Path, PathBuf, Prefix},
 };
 
 use keepcalm::SharedGlobalMut;
 use tempfile::TempDir;
 
 static CANONICAL_TEMP_DIR: SharedGlobalMut<PathBuf> = SharedGlobalMut::new_lazy(|| {
-    let tmp = std::env::temp_dir();
+    let tmp = if cfg!(target_vendor = "apple") {
+        Path::new("/tmp").to_owned()
+    } else {
+        std::env::temp_dir()
+    };
     match tmp.canonicalize() {
-        Ok(canonical) => {
-            if cfg!(target_vendor = "apple") {
-                if let Ok(canonical) = canonical.strip_prefix("/private") {
-                    Path::new("/").join(canonical).to_path_buf()
-                } else {
-                    canonical
-                }
-            } else {
-                canonical
-            }
-        }
+        Ok(canonical) => canonical,
         Err(_) => tmp,
     }
 });
@@ -96,10 +90,23 @@ impl NicePathBuf {
         cwd.into()
     }
 
+    /// Returns a string that can be used in the environment to refer to this
+    /// path.
+    ///
+    /// In the case where this path may be accessed via multiple routes, we will
+    /// choose the shortest (ie: /tmp on macOS rather than /private/tmp).
     pub fn env_string(&self) -> String {
         let path = &self.path;
         if let Ok(canonical) = path.canonicalize() {
-            canonical.display().to_string()
+            if cfg!(target_vendor = "apple") {
+                if let Ok(tmp) = canonical.strip_prefix(CANONICAL_TEMP_DIR.read()) {
+                    format!("/tmp/{}", tmp.display())
+                } else {
+                    canonical.display().to_string()
+                }
+            } else {
+                canonical.display().to_string()
+            }
         } else {
             path.display().to_string()
         }
@@ -167,12 +174,7 @@ impl NiceTempDir {
     }
 
     pub fn env_string(&self) -> String {
-        let path = self.path.path();
-        if let Ok(canonical) = path.canonicalize() {
-            canonical.display().to_string()
-        } else {
-            path.display().to_string()
-        }
+        NicePathBuf::from(self).env_string()
     }
 }
 

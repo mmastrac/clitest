@@ -150,8 +150,12 @@ fn munge_output(s: &str) -> String {
 }
 
 fn munge_line(root: &String, tmp: &[&str], output: &mut String, line: &str) {
+    // Windows/Unix differs here
     #[cfg(windows)]
     let line = line.replace("exit code", "exit status");
+    // Background processes don't get a signal report
+    #[cfg(windows)]
+    let line = line.replace(" (signal: 1 (SIGHUP))", "");
 
     if line.starts_with("───") {
         output.push_str("---\n");

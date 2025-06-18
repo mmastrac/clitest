@@ -1,37 +1,27 @@
 #!/usr/bin/env clitest --v0
 
-$ pwd
-*
-
-if TARGET_OS == "windows" {
-    # Map the temp dir to a Windows path compatible with PWD
-    # https://mingw-users.narkive.com/1K8kSmn0/msys-path-to-windows-path
-    $ mktemp -d -p $(cmd //c echo /tmp)
-    %SET TEMP_DIR
-    *
-}
-
-if TARGET_OS != "windows" {
-    $ mktemp -d
-    %SET TEMP_DIR
-    *
-}
+using tempdir;
 
 defer {
-    if TARGET_OS == "windows" {
-        # TODO: We need to figure this out
-    }
-    if TARGET_OS != "windows" {
-        $ rm -rf $TEMP_DIR
-    }
+    $ ls -1 $PWD
+    ! file
+
+    cd $TEMP_DIR;
+
+    $ rm -rf $PWD/subdir
 
     $ pwd
     *
 }
 
-$ echo $TEMP_DIR
-%SET PWD
-*
-
 $ pwd
-*
+%SET TEMP_DIR
+! %{PATH}
+
+$ mkdir subdir
+
+$ echo $PWD/subdir
+%SET PWD
+! %{PATH}
+
+$ touch file
