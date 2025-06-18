@@ -30,7 +30,7 @@ if TARGET_OS != "windows" {
     !
 }
 if TARGET_OS == "windows" {
-    ! a\\n
+    ! a\n
 }
 
 set VAR "a\$b";

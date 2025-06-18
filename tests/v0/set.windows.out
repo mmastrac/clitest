@@ -32,7 +32,7 @@ set VAR a\n
 
 echo $VAR
 ---
-a\\n
+a\n
 ---
 ✅ OK
 
