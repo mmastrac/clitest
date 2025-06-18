@@ -12,3 +12,31 @@ set FOO "$A $B";
 
 $ echo $FOO
 ! 1 2
+
+# The below lines match 'sh', not bash!
+set VAR 'a\\b';
+$ echo $VAR
+if TARGET_OS != "windows" {
+    ! a\b
+}
+if TARGET_OS == "windows" {
+    ! a\\b
+}
+
+set VAR "a\\n";
+$ echo $VAR
+if TARGET_OS != "windows" {
+    ! a
+    !
+}
+if TARGET_OS == "windows" {
+    ! a\n
+}
+
+set VAR "a\$b";
+$ echo $VAR
+! a$b
+
+set VAR 'a\$b';
+$ echo $VAR
+! a\$b

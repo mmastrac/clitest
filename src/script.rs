@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
-    path::{Path, PathBuf},
+    path::Path,
     process::ExitStatus,
     sync::{Arc, Mutex, atomic::AtomicBool},
     thread::ScopedJoinHandle,
@@ -12,9 +12,12 @@ use keepcalm::SharedMut;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::{Color, ColorChoice, WriteColor};
 
-use crate::command::CommandLine;
-use crate::output::*;
+use crate::{
+    command::CommandLine,
+    util::{NicePathBuf, NiceTempDir},
+};
 use crate::{cwrite, cwriteln, cwriteln_rule};
+use crate::{output::*, util::ShellBit};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -36,51 +39,18 @@ impl std::fmt::Display for ScriptLocation {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(derive_more::Debug, derive_more::Display, Clone, Serialize, PartialEq, Eq)]
+#[display("{}", file)]
 pub struct ScriptFile {
-    pub file: Arc<PathBuf>,
+    pub file: Arc<NicePathBuf>,
 }
 
 impl ScriptFile {
     /// Normalizes/prettifies the path if we can.
-    pub fn new(file: PathBuf) -> Self {
-        if cfg!(unix) {
-            if let Ok(canonical) = file.canonicalize() {
-                let cwd = std::env::current_dir().unwrap();
-                if canonical.starts_with(&cwd) {
-                    return Self {
-                        file: Arc::new(file),
-                    };
-                }
-                if let Some(home) = dirs::home_dir() {
-                    if canonical.starts_with(&home) {
-                        if let Some(diff) = pathdiff::diff_paths(&canonical, home) {
-                            return Self {
-                                file: Arc::new(Path::new("~").join(diff)),
-                            };
-                        }
-                    }
-                }
-                if let Ok(tmp) = Path::new("/tmp").canonicalize() {
-                    if canonical.starts_with(&tmp) {
-                        if let Some(diff) = pathdiff::diff_paths(&canonical, &tmp) {
-                            return Self {
-                                file: Arc::new(Path::new("/tmp").join(diff)),
-                            };
-                        }
-                    }
-                }
-            }
-        }
+    pub fn new(file: impl AsRef<Path>) -> Self {
         Self {
-            file: Arc::new(file),
+            file: Arc::new(NicePathBuf::new(file)),
         }
-    }
-}
-
-impl std::fmt::Display for ScriptFile {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.file.display())
     }
 }
 
@@ -196,11 +166,18 @@ struct ScriptOutputLock<'a> {
     stream: keepcalm::SharedWriteLock<'a, Box<dyn WriteColorAny>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScriptMode {
+    Normal,
+    Deferred,
+    Background,
+}
+
 #[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
-    pub envs: HashMap<String, String>,
-    background: bool,
+    env_vars: HashMap<String, String>,
+    background: ScriptMode,
     #[debug(skip)]
     kill: ScriptKillReceiver,
     #[debug(skip)]
@@ -213,8 +190,8 @@ impl Default for ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: ScriptRunArgs::default(),
-            envs: HashMap::new(),
-            background: false,
+            env_vars: HashMap::new(),
+            background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output: ScriptOutput::default(),
@@ -227,28 +204,64 @@ impl ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: self.args.clone(),
-            envs: self.envs.clone(),
-            background: true,
+            env_vars: self.env_vars.clone(),
+            background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output: ScriptOutput::quiet(self.args.no_color),
         }
     }
 
-    pub fn pwd(&self) -> PathBuf {
-        self.envs
+    pub fn new_deferred(&self) -> Self {
+        Self {
+            args: self.args.clone(),
+            env_vars: self.env_vars.clone(),
+            background: ScriptMode::Deferred,
+            kill: self.kill.clone(),
+            kill_sender: self.kill_sender.clone(),
+            output: self.output.clone(),
+        }
+    }
+
+    pub fn pwd(&self) -> NicePathBuf {
+        self.env_vars
             .get("PWD")
             .cloned()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().expect("Couldn't get current directory"))
+            .map(NicePathBuf::from)
+            .unwrap_or_else(|| NicePathBuf::cwd())
+    }
+
+    pub fn get_env(&self, name: &str) -> Option<&str> {
+        self.env_vars.get(name).map(|s| s.as_str())
+    }
+
+    pub fn set_env(&mut self, name: impl Into<String>, value: impl Into<String>) {
+        let name = name.into();
+        if name == "PWD" {
+            self.set_pwd(value.into());
+        } else {
+            self.env_vars.insert(name, value.into());
+        }
+    }
+
+    pub fn set_pwd(&mut self, pwd: impl Into<NicePathBuf>) {
+        let pwd = pwd.into().env_string();
+        self.env_vars.insert("PWD".to_string(), pwd);
     }
 
     pub fn take_output(self) -> String {
         self.output.take_buffer()
     }
 
+    fn expand(&self, value: &ShellBit) -> Result<String, ScriptRunError> {
+        match value {
+            ShellBit::Literal(s) => Ok(s.clone()),
+            ShellBit::Quoted(s) => self.expand_str(s),
+        }
+    }
+
     /// Perform shell expansion on a string.
-    fn expand(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
+    fn expand_str(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
         enum State {
             Normal,
             EscapeNext,
@@ -286,11 +299,11 @@ impl ScriptRunContext {
                 }
                 State::InCurly => {
                     if c == '}' {
-                        if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
+                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in ${{...}}: {}",
+                                "undefined variable in ${{...}}: {:?} (in {value:?})",
                                 variable
                             )));
                         }
@@ -300,27 +313,27 @@ impl ScriptRunContext {
                     }
                 }
                 State::Dollar => {
-                    if c.is_alphanumeric() {
+                    if c.is_alphanumeric() || c == '_' {
                         state = State::InDollar;
                         variable.push(c);
                     } else if c == '{' {
                         state = State::InCurly;
                     } else {
                         return Err(ScriptRunError::ExpansionError(format!(
-                            "invalid variable: {}",
+                            "invalid variable: {:?} (in {value:?})",
                             c
                         )));
                     }
                 }
                 State::InDollar => {
-                    if c.is_alphanumeric() {
+                    if c.is_alphanumeric() || c == '_' {
                         variable.push(c);
                     } else {
-                        if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
+                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in $...: {}",
+                                "undefined variable in $...: {:?} (in {value:?})",
                                 variable
                             )));
                         }
@@ -332,7 +345,7 @@ impl ScriptRunContext {
         }
         match state {
             State::InDollar => {
-                if let Some(value) = self.envs.get(&variable) {
+                if let Some(value) = self.get_env(&variable) {
                     expanded.push_str(value);
                 } else {
                     return Err(ScriptRunError::ExpansionError(format!(
@@ -370,6 +383,7 @@ impl ScriptRunContext {
     }
 }
 
+#[derive(Clone)]
 pub struct ScriptKillReceiver {
     kill_receiver: Arc<AtomicBool>,
 }
@@ -520,13 +534,13 @@ impl ScriptKillSender {
 
 impl ScriptRunContext {
     pub fn new(args: ScriptRunArgs, script_path: &Path) -> Self {
-        let mut envs = HashMap::new();
+        let mut env_vars = HashMap::new();
 
         macro_rules! target {
             ($env:ident, $var:ident, [$($vals:expr),*]) => {
                 $(
                 if cfg!($var = $vals) {
-                    envs.insert(stringify!($env).to_string(), $vals.to_string());
+                    env_vars.insert(stringify!($env).to_string(), $vals.to_string());
                 }
                 )*
             };
@@ -545,12 +559,12 @@ impl ScriptRunContext {
         );
 
         // Set the current working directory as a special variable "PWD"
-        envs.insert(
+        env_vars.insert(
             "PWD".to_string(),
-            script_path.parent().unwrap().to_string_lossy().to_string(),
+            NicePathBuf::from(script_path.parent().unwrap()).env_string(),
         );
         // Save the initial PWD as INITIAL_PWD so it can easily be restored
-        envs.insert("INITIAL_PWD".to_string(), envs["PWD"].clone());
+        env_vars.insert("INITIAL_PWD".to_string(), env_vars["PWD"].clone());
 
         let kill = Arc::new(AtomicBool::new(false));
 
@@ -564,8 +578,8 @@ impl ScriptRunContext {
 
         Self {
             args,
-            envs,
-            background: false,
+            env_vars,
+            background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output,
@@ -679,6 +693,8 @@ pub enum ScriptErrorType {
     InvalidGlobalPattern,
     #[error("invalid block type")]
     InvalidBlockType,
+    #[error("invalid block arguments")]
+    InvalidBlockArgs,
     #[error("unsupported command position")]
     UnsupportedCommandPosition,
     #[error("invalid trailing pattern after *")]
@@ -784,7 +800,7 @@ impl ScriptBlock {
         blocks: &[ScriptBlock],
     ) -> Result<Vec<ScriptResult>, ScriptRunError> {
         enum Deferred<'a> {
-            Script(&'a ScriptBlock),
+            Scripts(&'a [ScriptBlock]),
             Internal(
                 Box<
                     dyn FnOnce(&mut ScriptRunContext) -> Result<(), ScriptRunError>
@@ -817,12 +833,12 @@ impl ScriptBlock {
                     ScriptBlock::Defer(blocks) => {
                         // Insert at the front of the queue by extending and
                         // then rotating
-                        for block in blocks {
-                            defer_blocks.push_back(Deferred::Script(block));
-                        }
-                        defer_blocks.rotate_left(blocks.len());
+                        defer_blocks.push_front(Deferred::Scripts(blocks));
                     }
                     ScriptBlock::InternalCommand(command) => {
+                        if context.background == ScriptMode::Deferred {
+                            cwrite!(context.stream(), dimmed = true, "(deferred) ");
+                        }
                         if let Some(f) = command.run(context)? {
                             defer_blocks.push_front(Deferred::Internal(f));
                         }
@@ -838,9 +854,9 @@ impl ScriptBlock {
             }
             for block in defer_blocks {
                 match block {
-                    Deferred::Script(block) => {
-                        cwrite!(context.stream(), dimmed = true, "(deferred) ");
-                        block.run(context)?;
+                    Deferred::Scripts(blocks) => {
+                        let mut context = context.new_deferred();
+                        ScriptBlock::run_blocks(&mut context, blocks)?;
                     }
                     Deferred::Internal(block) => {
                         cwrite!(context.stream(), dimmed = true, "(cleanup) ");
@@ -904,22 +920,26 @@ impl ScriptBlock {
 
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<Vec<ScriptResult>, ScriptRunError> {
         let pwd = context.pwd();
-        if !matches!(std::fs::exists(&pwd), Ok(true)) {
-            let initial_pwd = context.envs["INITIAL_PWD"].clone();
+        let res = pwd.exists();
+        if !matches!(res, Ok(true)) {
             cwriteln!(
                 context.stream(),
                 fg = Color::Red,
-                "$PWD {pwd:?} doesn't exist, returning to $INITIAL_PWD {initial_pwd:?}. Run `cd $INITIAL_PWD` to fix.",
+                "$PWD {pwd:?} doesn't exist. Run `cd $INITIAL_PWD` to fix.",
             );
-            context
-                .envs
-                .insert("PWD".to_string(), context.envs["INITIAL_PWD"].clone());
+            return Err(ScriptRunError::IO(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("PWD does not exist: {pwd:?}"),
+            )));
         }
 
         match self {
             ScriptBlock::Command(command) => {
+                if context.background == ScriptMode::Deferred {
+                    cwrite!(context.stream(), dimmed = true, "(deferred) ");
+                }
                 let result = command.run(context)?;
-                if !context.background {
+                if context.background != ScriptMode::Background {
                     result.evaluate(context)?;
                     Ok(vec![])
                 } else {
@@ -937,7 +957,7 @@ impl ScriptBlock {
             ScriptBlock::For(ForCondition::Env(env, values), blocks) => {
                 let mut results = Vec::new();
                 for value in values {
-                    context.envs.insert(env.clone(), context.expand(value)?);
+                    context.set_env(env, context.expand(value)?);
                     results.extend(Self::run_blocks(context, blocks)?);
                 }
                 Ok(results)
@@ -985,7 +1005,7 @@ impl ScriptBlock {
                     backoff *= 2;
                 }
             }
-            _ => unreachable!(),
+            _ => unreachable!("Unexpected block type: {self:?}"),
         }
     }
 }
@@ -1032,9 +1052,9 @@ impl Serialize for ScriptBlock {
 #[derive(Debug, Clone, Serialize)]
 pub enum InternalCommand {
     UsingTempdir,
-    UsingDir(String, bool),
-    ChangeDir(String),
-    Set(String, String),
+    UsingDir(ShellBit, bool),
+    ChangeDir(ShellBit),
+    Set(String, ShellBit),
 }
 
 impl InternalCommand {
@@ -1048,105 +1068,112 @@ impl InternalCommand {
         match self.clone() {
             InternalCommand::UsingTempdir => {
                 let current_pwd = context.pwd();
-                let tempdir = tempfile::tempdir().expect("Couldn't create tempdir");
-                let mut tempdir_path = tempdir.path().canonicalize()?;
-                let temp = std::env::temp_dir().canonicalize()?;
-                if cfg!(target_vendor = "apple") {
-                    if let Ok(base) = tempdir_path.strip_prefix(temp) {
-                        tempdir_path = Path::new("/tmp").join(base);
-                    }
-                }
+                let tempdir = NiceTempDir::new();
                 cwrite!(context.stream(), fg = Color::Yellow, "using tempdir: ");
-                cwriteln!(context.stream(), "{}", tempdir_path.to_string_lossy());
+                cwriteln!(context.stream(), "{}", tempdir);
                 cwriteln!(context.stream());
-                context.envs.insert(
-                    "PWD".to_string(),
-                    tempdir.path().to_string_lossy().to_string(),
-                );
+                context.set_pwd(&tempdir);
+                let pwd = context.pwd();
+                if !pwd.exists()? {
+                    return Err(ScriptRunError::IO(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("newly created tempdir does not exist: {pwd:?}"),
+                    )));
+                }
                 Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
                     cwriteln!(
                         context.stream(),
                         fg = Color::Yellow,
                         "removing {} && cd {}",
-                        tempdir_path.to_string_lossy(),
-                        current_pwd.to_string_lossy()
+                        tempdir,
+                        current_pwd
                     );
                     cwriteln!(context.stream());
-                    std::fs::remove_dir_all(&tempdir)?;
-                    drop(tempdir);
+                    if !tempdir.exists()? {
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Red,
+                            "tempdir does not exist: {tempdir}"
+                        );
+                    }
+                    if let Err(e) = tempdir.remove_dir_all() {
+                        cwriteln!(
+                            context.stream(),
+                            fg = Color::Red,
+                            "error removing tempdir: {e:?}"
+                        );
+                    }
                     Ok::<_, ScriptRunError>(())
                 })))
             }
             InternalCommand::UsingDir(dir, new) => {
                 let current_pwd = context.pwd();
-                let dir = context.expand(dir)?;
+                let dir = context.expand(&dir)?;
                 let new_pwd = current_pwd.join(dir);
                 if new {
                     cwrite!(context.stream(), fg = Color::Yellow, "using new dir: ");
                 } else {
                     cwrite!(context.stream(), fg = Color::Yellow, "using dir: ");
                 }
-                cwriteln!(context.stream(), "{}", new_pwd.to_string_lossy());
+                cwriteln!(context.stream(), "{}", new_pwd);
                 cwriteln!(context.stream());
 
                 if new {
-                    std::fs::create_dir_all(&new_pwd)?;
-                } else if !new_pwd.exists() {
+                    new_pwd.create_dir_all()?;
+                } else if !new_pwd.exists()? {
                     return Err(ScriptRunError::IO(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         "directory does not exist",
                     )));
                 }
-                context
-                    .envs
-                    .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                context.set_pwd(&new_pwd);
                 Ok(Some(Box::new(move |context: &mut ScriptRunContext| {
                     if new {
                         cwriteln!(
                             context.stream(),
                             fg = Color::Yellow,
                             "removing {} && cd {}",
-                            new_pwd.to_string_lossy(),
-                            current_pwd.to_string_lossy()
+                            new_pwd,
+                            current_pwd
                         );
                         cwriteln!(context.stream());
                     } else {
-                        cwriteln!(
-                            context.stream(),
-                            fg = Color::Yellow,
-                            "cd {}",
-                            current_pwd.to_string_lossy()
-                        );
+                        cwriteln!(context.stream(), fg = Color::Yellow, "cd {}", current_pwd);
                         cwriteln!(context.stream());
                     }
                     if new {
-                        std::fs::remove_dir_all(&new_pwd)?;
+                        new_pwd.remove_dir_all()?;
                     }
-                    context
-                        .envs
-                        .insert("PWD".to_string(), current_pwd.to_string_lossy().to_string());
+                    context.set_pwd(current_pwd);
                     Ok::<_, ScriptRunError>(())
                 })))
             }
             InternalCommand::ChangeDir(dir) => {
-                let dir = context.expand(dir)?;
+                let dir = context.expand(&dir)?;
 
                 cwriteln!(context.stream(), fg = Color::Yellow, "cd {dir}");
                 cwriteln!(context.stream());
                 let current_pwd = context.pwd();
                 let new_pwd = current_pwd.join(dir);
-                context
-                    .envs
-                    .insert("PWD".to_string(), new_pwd.to_string_lossy().to_string());
+                context.set_pwd(new_pwd);
                 Ok(None)
             }
             InternalCommand::Set(name, value) => {
-                let value = context.expand(value)?;
+                let value = context.expand(&value)?;
 
-                cwriteln!(context.stream(), fg = Color::Yellow, "set {name} {value}");
+                context.set_env(&name, &value);
+                let new_value = context.get_env(&name).unwrap_or_default();
+                if new_value != value {
+                    cwriteln!(
+                        context.stream(),
+                        fg = Color::Yellow,
+                        "set {name} {value} (-> {new_value})"
+                    );
+                } else {
+                    cwriteln!(context.stream(), fg = Color::Yellow, "set {name} {value}");
+                }
                 cwriteln!(context.stream());
 
-                context.envs.insert(name.clone(), value);
                 Ok(None)
             }
         }
@@ -1157,7 +1184,7 @@ impl InternalCommand {
 pub enum IfCondition {
     True,
     False,
-    EnvEq(bool, String, String),
+    EnvEq(bool, String, ShellBit),
 }
 
 impl IfCondition {
@@ -1166,12 +1193,8 @@ impl IfCondition {
             IfCondition::True => true,
             IfCondition::False => false,
             IfCondition::EnvEq(negated, name, expected) => {
-                let value = context
-                    .envs
-                    .get(name)
-                    .map(|s| s.as_str())
-                    .unwrap_or_default();
-                (value == expected) ^ negated
+                let value = context.get_env(name).unwrap_or_default();
+                (expected == value) ^ negated
             }
         }
     }
@@ -1182,7 +1205,11 @@ impl IfCondition {
             IfCondition::False => Ok(IfCondition::False),
             IfCondition::EnvEq(negated, name, expected) => {
                 let value = context.expand(expected)?;
-                Ok(IfCondition::EnvEq(*negated, name.clone(), value))
+                Ok(IfCondition::EnvEq(
+                    *negated,
+                    name.clone(),
+                    ShellBit::Literal(value),
+                ))
             }
         }
     }
@@ -1197,7 +1224,8 @@ impl Serialize for IfCondition {
             IfCondition::True => "true".serialize(serializer),
             IfCondition::False => "false".serialize(serializer),
             IfCondition::EnvEq(negated, name, value) => {
-                let mut ser = serializer.serialize_map(Some(2))?;
+                let mut ser = serializer.serialize_map(Some(3))?;
+                ser.serialize_entry("op", if *negated { "!=" } else { "==" })?;
                 ser.serialize_entry("env", name)?;
                 ser.serialize_entry("value", value)?;
                 ser.end()
@@ -1208,7 +1236,7 @@ impl Serialize for IfCondition {
 
 #[derive(Debug)]
 pub enum ForCondition {
-    Env(String, Vec<String>),
+    Env(String, Vec<ShellBit>),
 }
 
 impl Serialize for ForCondition {
@@ -1243,6 +1271,10 @@ impl ScriptCommand {
         let command = &self.command;
         let args = &context.args;
 
+        if let Some(delay) = args.delay_steps {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
+
         for line in command.command.split('\n') {
             cwriteln!(context.stream(), fg = Color::Green, "{}", line);
         }
@@ -1251,22 +1283,20 @@ impl ScriptCommand {
             &mut context.stream(),
             context.args.show_line_numbers,
             context.args.runner.clone(),
-            &context.envs,
+            &context.env_vars,
             &context.kill,
         )?;
-
-        // Side-effects
-        if let Some(set_var) = &self.set_var {
-            context
-                .envs
-                .insert(set_var.clone(), output.to_string().trim().to_string());
-        }
 
         let exit_result = if !self.exit.matches(status) {
             ExitResult::Mismatch(status)
         } else {
             ExitResult::Matches(status)
         };
+
+        // Side-effects
+        if let Some(set_var) = &self.set_var {
+            context.set_env(set_var, output.to_string().trim());
+        }
 
         let match_context = OutputMatchContext::new(context);
         let pattern_result = match self.pattern.matches(match_context.clone(), output.clone()) {
@@ -1294,10 +1324,6 @@ impl ScriptCommand {
             cwriteln!(context.stream(), dimmed = true, "(no output)");
         }
         cwriteln_rule!(context.stream());
-
-        if let Some(delay) = args.delay_steps {
-            std::thread::sleep(std::time::Duration::from_millis(delay));
-        }
 
         Ok(ScriptResult {
             command: command.clone(),
@@ -1428,7 +1454,7 @@ repeat {
 }
 "#;
 
-        let script = parse_script(ScriptFile::new("test.cli".into()), script)?;
+        let script = parse_script(ScriptFile::new("test.cli"), script)?;
         assert_eq!(script.commands.len(), 2);
         eprintln!("{:?}", script);
         Ok(())
@@ -1442,7 +1468,7 @@ $ cmd &
     "#;
 
         assert!(matches!(
-            parse_script(ScriptFile::new("test.cli".into()), script),
+            parse_script(ScriptFile::new("test.cli"), script),
             Err(ScriptError {
                 error: ScriptErrorType::BackgroundProcessNotAllowed,
                 ..
@@ -1454,15 +1480,24 @@ $ cmd &
     #[test]
     fn test_script_run_context_expand() {
         let mut context = ScriptRunContext::new(ScriptRunArgs::default(), &Path::new("."));
-        context.envs.insert("A".to_string(), "1".to_string());
-        context.envs.insert("B".to_string(), "2".to_string());
-        context.envs.insert("C".to_string(), "3".to_string());
-        assert_eq!(context.expand("$A").unwrap(), "1".to_string());
-        assert_eq!(context.expand("$A $B ").unwrap(), "1 2 ".to_string());
-        assert_eq!(context.expand("${A} ${B} ").unwrap(), "1 2 ".to_string());
-        assert_eq!(context.expand(r#"\$A"#).unwrap(), "$A".to_string());
-        assert_eq!(context.expand(r#"\${A}"#).unwrap(), "${A}".to_string());
-        assert_eq!(context.expand(r#"\\$A"#).unwrap(), r#"\1"#);
-        assert_eq!(context.expand(r#"\\${A}"#).unwrap(), r#"\1"#);
+        context.set_env("A", "1");
+        context.set_env("B", "2");
+        context.set_env("C", "3");
+        assert_eq!(context.expand_str("$A").unwrap(), "1".to_string());
+        assert_eq!(context.expand_str("$A $B ").unwrap(), "1 2 ".to_string());
+        assert_eq!(
+            context.expand_str("${A} ${B} ").unwrap(),
+            "1 2 ".to_string()
+        );
+        assert_eq!(context.expand_str(r#"\$A"#).unwrap(), "$A".to_string());
+        assert_eq!(context.expand_str(r#"\${A}"#).unwrap(), "${A}".to_string());
+        assert_eq!(context.expand_str(r#"\\$A"#).unwrap(), r#"\1"#);
+        assert_eq!(context.expand_str(r#"\\${A}"#).unwrap(), r#"\1"#);
+        context.set_env("TEMP_DIR", "/tmp");
+        assert_eq!(context.expand_str("$TEMP_DIR").unwrap(), "/tmp".to_string());
+        assert_eq!(
+            context.expand_str("${TEMP_DIR}").unwrap(),
+            "/tmp".to_string()
+        );
     }
 }

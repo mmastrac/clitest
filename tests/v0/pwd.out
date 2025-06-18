@@ -1,41 +1,38 @@
 Running tests/v0/pwd.cli ...
 
-pwd
----
-<root>/tests/v0
----
-✅ OK
+using tempdir: <tmp>
 
-mktemp -d
----
-<tmp>
----
-✅ OK
+set TEMP_DIR <tmp>
 
-echo $TEMP_DIR
----
-<tmp>
----
-✅ OK
-
-pwd
----
-<tmp>
----
-✅ OK
-
-(deferred) rm -rf $TEMP_DIR
+mkdir subdir
 ---
 (no output)
 ---
 ✅ OK
 
-(deferred) $PWD "<tmp>" doesn't exist, returning to $INITIAL_PWD "<root>/tests/v0". Run `cd $INITIAL_PWD` to fix.
-pwd
+set PWD <tmp>/subdir
+
+touch file
 ---
-<root>/tests/v0
+(no output)
 ---
 ✅ OK
+
+(deferred) ls -1 $PWD
+---
+file
+---
+✅ OK
+
+(deferred) cd <tmp>
+
+(deferred) rm -rf $PWD/subdir
+---
+(no output)
+---
+✅ OK
+
+(cleanup) removing <tmp> && cd <root>/tests/v0
 
 tests/v0/pwd.cli PASSED
 1 test(s) passed

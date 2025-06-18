@@ -1,8 +1,8 @@
 #!/usr/bin/env clitest --v0
 
-$ mktemp
-%SET TEMP_FILE
-*
+using tempdir;
+
+set TEMP_FILE background.log;
 
 background {
     $ printf "background\n" >> $TEMP_FILE && sleep 10 && printf "background\n" >> $TEMP_FILE

@@ -110,18 +110,22 @@ fn munge_output(s: &str) -> String {
         .canonicalize()
         .unwrap()
         .display()
-        .to_string();
+        .to_string()
+        .replace(r"\\?\", "");
 
     let tmp = std::env::temp_dir()
         .canonicalize()
         .unwrap()
         .display()
-        .to_string();
+        .to_string()
+        .replace(r"\\?\", "");
 
     let apple_path = tmp.strip_prefix("/private");
     let tmps = if tmp != "/tmp" {
         if let Some(apple_path) = apple_path {
             vec![apple_path, &tmp, "/tmp"]
+        } else if cfg!(windows) {
+            vec!["%TEMP%", &tmp, r"\tmp"]
         } else {
             vec![&tmp, "/tmp"]
         }
@@ -131,18 +135,37 @@ fn munge_output(s: &str) -> String {
 
     // Replace any line that starts with "───" with "---"
     let mut output = String::new();
+    // On Windows, use \ for everything, then replace back to / for final test
+    #[cfg(windows)]
+    let s = &s.replace('/', r"\");
+    #[cfg(windows)]
+    let s = s.replace(r"\\?\", "");
     for line in s.lines() {
         munge_line(&root, &tmps, &mut output, line);
+    }
+    if cfg!(windows) {
+        output = output.replace("\\", "/");
     }
     output
 }
 
 fn munge_line(root: &String, tmp: &[&str], output: &mut String, line: &str) {
+    // Windows/Unix differs here
+    #[cfg(windows)]
+    let line = line.replace("exit code", "exit status");
+    // Background processes don't get a signal report
+    #[cfg(windows)]
+    let line = line.replace(" (signal: 1 (SIGHUP))", "");
+
     if line.starts_with("───") {
         output.push_str("---\n");
     } else if line.contains("<ignore>") {
         output.push_str("<ignore>\n");
     } else {
+        let line = line.replace(
+            "~/",
+            &format!("{}/", std::env::var("HOME").unwrap_or_default()),
+        );
         let line = line.replace(root, "<root>");
         for tmp in tmp {
             if line.contains(tmp) {
@@ -158,10 +181,11 @@ fn munge_line(root: &String, tmp: &[&str], output: &mut String, line: &str) {
 
 fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
     let tmp_char = |c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.';
+    let sep = if cfg!(windows) { '\\' } else { '/' };
 
     // Replace /tmp or /tmp/<filename> with <tmp>
     let tmp_path = line.split_once(tmp).unwrap().1;
-    let tmp_path = if tmp_path.is_empty() || tmp_path.chars().nth(0).unwrap() != '/' {
+    let tmp_path = if tmp_path.is_empty() || tmp_path.chars().nth(0).unwrap() != sep {
         None
     } else {
         tmp_path[1..].split(tmp_char).nth(0)
@@ -169,7 +193,7 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
 
     if let Some(tmp_path) = tmp_path {
         output.push_str(
-            line.replace(format!("{tmp}/{tmp_path}").as_str(), "<tmp>")
+            line.replace(format!("{tmp}{sep}{tmp_path}").as_str(), "<tmp>")
                 .as_str(),
         );
     } else {
@@ -200,6 +224,10 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
         cprintln_rule!();
         let comparison = pretty_assertions::StrComparison::new(&a, &b);
         cprintln!("{}", comparison);
+        cprintln_rule!();
+        cprintln!("\nOriginal output before munge:");
+        cprintln_rule!();
+        cprintln!("{}", output);
         cprintln_rule!();
         false
     } else {
