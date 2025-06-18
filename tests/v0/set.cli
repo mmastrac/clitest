@@ -16,7 +16,12 @@ $ echo $FOO
 # The below lines match 'sh', not bash!
 set VAR 'a\\b';
 $ echo $VAR
-! a\b
+if TARGET_OS != "windows" {
+    ! a\b
+}
+if TARGET_OS == "windows" {
+    ! a\\b
+}
 
 set VAR "a\\n";
 $ echo $VAR
