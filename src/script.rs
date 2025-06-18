@@ -899,15 +899,15 @@ impl ScriptBlock {
         let pwd = context.pwd();
         let res = pwd.exists();
         if !matches!(res, Ok(true)) {
-            let initial_pwd = context.envs["INITIAL_PWD"].clone();
             cwriteln!(
                 context.stream(),
                 fg = Color::Red,
-                "$PWD {pwd:?} doesn't exist, returning to $INITIAL_PWD {initial_pwd:?}. Run `cd $INITIAL_PWD` to fix.",
+                "$PWD {pwd:?} doesn't exist. Run `cd $INITIAL_PWD` to fix.",
             );
-            context
-                .envs
-                .insert("PWD".to_string(), context.envs["INITIAL_PWD"].clone());
+            return Err(ScriptRunError::IO(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("PWD does not exist: {pwd:?}"),
+            )));
         }
 
         match self {

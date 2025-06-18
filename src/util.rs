@@ -261,7 +261,7 @@ fn write_pretty_path(
         if let Some(cwd) = cwd {
             if let Ok(path) = canon_path.strip_prefix(cwd) {
                 if debug {
-                    write!(f, "{:?}", path.display())?;
+                    write_debug_path(f, &path)?;
                 } else {
                     write!(f, "{}", path.display())?;
                 }
@@ -273,7 +273,7 @@ fn write_pretty_path(
     // Unlikely, but just print the path if we're not on unix or windows
     if !cfg!(unix) && !cfg!(windows) {
         if debug {
-            write!(f, "{:?}", path)?;
+            write_debug_path(f, &path)?;
         } else {
             write!(f, "{}", path.display())?;
         }
@@ -285,14 +285,14 @@ fn write_pretty_path(
         if cfg!(unix) {
             let path = Path::new("/tmp").join(path);
             if debug {
-                write!(f, "{path:?}")?;
+                write_debug_path(f, &path)?;
             } else {
                 write!(f, "{}", path.display())?;
             }
-        } else if cfg!(windows) {
+        } else if !debug && cfg!(windows) {
             let path = Path::new("%TEMP%").join(path);
             if debug {
-                write!(f, "{path:?}")?;
+                write_debug_path(f, &path)?;
             } else {
                 write!(f, "{}", path.display())?;
             }
@@ -342,6 +342,14 @@ fn write_pretty_path(
     }
 
     write!(f, "{}", canon_path.display())
+}
+
+fn write_debug_path(f: &mut std::fmt::Formatter<'_>, path: &Path) -> std::fmt::Result {
+    if cfg!(windows) {
+        write!(f, "<{}>", path.display())
+    } else {
+        write!(f, "{path:?}")
+    }
 }
 
 #[cfg(test)]
