@@ -25,13 +25,22 @@ if TARGET_OS == "windows" {
 
 set VAR "a\\n";
 $ echo $VAR
-! a
-!
+if TARGET_OS != "windows" {
+    ! a
+    !
+}
+if TARGET_OS == "windows" {
+    ! a\\n
+}
 
 set VAR "a\$b";
-
 $ echo $VAR
-! a$b
+if TARGET_OS != "windows" {
+    ! a$b
+}
+if TARGET_OS == "windows" {
+    ! a\$b
+}
 
 set VAR 'a\$b';
 
