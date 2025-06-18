@@ -1,0 +1,57 @@
+Running tests/v0/set.cli ...
+
+set FOO bar
+
+echo $FOO
+---
+bar
+---
+✅ OK
+
+set A 1
+
+set B 2
+
+set FOO 1 2
+
+echo $FOO
+---
+1 2
+---
+✅ OK
+
+set VAR a\\b
+
+echo $VAR
+---
+a\\b
+---
+✅ OK
+
+set VAR a\n
+
+echo $VAR
+---
+a
+
+---
+✅ OK
+
+set VAR a$b
+
+echo $VAR
+---
+a$b
+---
+✅ OK
+
+set VAR a\$b
+
+echo $VAR
+---
+a\$b
+---
+✅ OK
+
+tests/v0/set.cli PASSED
+1 test(s) passed

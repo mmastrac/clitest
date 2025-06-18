@@ -50,7 +50,13 @@ pub mod testing {
                 }
 
                 let test_content = std::fs::read_to_string(test.path()).unwrap();
-                let output_file = test.path().with_extension("out");
+                let mut output_file = test.path().with_extension("out");
+                if cfg!(windows) {
+                    let windows_output_file = output_file.with_extension("windows.out");
+                    if windows_output_file.exists() {
+                        output_file = windows_output_file;
+                    }
+                }
                 let expected_output = if output_file.exists() {
                     Some(std::fs::read_to_string(&output_file).unwrap())
                 } else {
