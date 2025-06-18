@@ -20,5 +20,38 @@ echo $FOO
 ---
 ✅ OK
 
+set VAR a\\b
+
+echo $VAR
+---
+a\b
+---
+✅ OK
+
+set VAR a\n
+
+echo $VAR
+---
+a
+
+---
+✅ OK
+
+set VAR a$b
+
+echo $VAR
+---
+a$b
+---
+✅ OK
+
+set VAR a\$b
+
+echo $VAR
+---
+a\$b
+---
+✅ OK
+
 tests/v0/set.cli PASSED
 1 test(s) passed

@@ -21,6 +21,12 @@ $ pwd
 $ mkdir subdir
 
 # Avoid using `echo` because msys on Windows will munge the path
-set PWD $PWD/subdir;
+if TARGET_OS == "windows" {
+    set PWD $PWD\subdir;
+}
+
+if TARGET_OS != "windows" {
+    set PWD $PWD/subdir;
+}
 
 $ touch file

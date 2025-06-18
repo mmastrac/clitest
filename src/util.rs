@@ -5,6 +5,7 @@ use std::{
 };
 
 use keepcalm::SharedGlobalMut;
+use serde::Serialize;
 use tempfile::TempDir;
 
 static CANONICAL_TEMP_DIR: SharedGlobalMut<PathBuf> = SharedGlobalMut::new_lazy(|| {
@@ -359,6 +360,126 @@ fn write_debug_path(f: &mut std::fmt::Formatter<'_>, path: &Path) -> std::fmt::R
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ShellParseError {
+    UnmatchedQuote(char),
+}
+
+/// A single bit of a shell-ish string.
+#[derive(derive_more::Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
+pub enum ShellBit {
+    /// A literal string that does not participate in expansion. Comes from
+    /// `'string'`.
+    #[debug("{_0:?}")]
+    Literal(String),
+    /// A string that is (possibly) quoted and participates in expansion. Comes
+    /// from `"string"` or `string`.
+    #[debug("{_0:?}")]
+    Quoted(String),
+}
+
+impl PartialEq<str> for ShellBit {
+    fn eq(&self, other: &str) -> bool {
+        match self {
+            ShellBit::Literal(s) => s == other,
+            ShellBit::Quoted(s) => s == other,
+        }
+    }
+}
+
+impl PartialEq<&'_ str> for ShellBit {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            ShellBit::Literal(s) => s == other,
+            ShellBit::Quoted(s) => s == other,
+        }
+    }
+}
+
+impl ShellBit {
+    pub fn to_string(&self) -> String {
+        match self {
+            ShellBit::Literal(s) => s.clone(),
+            ShellBit::Quoted(s) => s.clone(),
+        }
+    }
+}
+
+impl Serialize for ShellBit {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // TODO
+        match self {
+            ShellBit::Literal(s) => serializer.serialize_str(s),
+            ShellBit::Quoted(s) => serializer.serialize_str(s),
+        }
+    }
+}
+
+/// Split a shell-ish string into a vector of strings.
+pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
+    let mut result = Vec::new();
+    let mut in_string = None;
+    let mut in_escape = false;
+    let mut accum = String::new();
+
+    for c in input.chars() {
+        if let Some(string_char) = in_string {
+            if string_char == '\'' {
+                if c == string_char {
+                    in_string = None;
+                    result.push(ShellBit::Literal(std::mem::take(&mut accum)));
+                } else {
+                    accum.push(c);
+                }
+            } else {
+                if in_escape {
+                    in_escape = false;
+                    accum.push('\\');
+                    accum.push(c);
+                } else if c == '\\' {
+                    in_escape = true;
+                } else if c == string_char {
+                    in_string = None;
+                    if c == '"' {
+                        result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
+                    }
+                } else {
+                    accum.push(c);
+                }
+            }
+        } else {
+            if c == '\\' {
+                in_escape = true;
+            } else if in_escape {
+                in_escape = false;
+                accum.push('\\');
+                accum.push(c);
+            } else if c == '"' || c == '\'' {
+                in_string = Some(c);
+            } else if c == ' ' {
+                if accum.is_empty() {
+                    continue;
+                }
+                result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
+            } else {
+                accum.push(c);
+            }
+        }
+    }
+    if let Some(string_char) = in_string {
+        return Err(ShellParseError::UnmatchedQuote(string_char));
+    }
+
+    if !accum.is_empty() {
+        result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
+    }
+
+    return Ok(result);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,5 +547,63 @@ mod tests {
 
         assert_eq!(r"C:\directory", format!("{}", path));
         assert_eq!(r"<C:\directory>", format!("{:?}", path));
+    }
+
+    #[test]
+    fn test_shell_split() {
+        assert_eq!(format!("{:?}", shell_split("").unwrap()), r#"[]"#);
+        assert_eq!(format!("{:?}", shell_split("a").unwrap()), r#"["a"]"#);
+        assert_eq!(
+            format!("{:?}", shell_split("a b").unwrap()),
+            r#"["a", "b"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split("a b c").unwrap()),
+            r#"["a", "b", "c"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split("a 'b' c").unwrap()),
+            r#"["a", "b", "c"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split("a 'b c' d").unwrap()),
+            r#"["a", "b c", "d"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split(r#"a "b" c"#).unwrap()),
+            r#"["a", "b", "c"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split(r#"a "b c" d"#).unwrap()),
+            r#"["a", "b c", "d"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split(r#"a "b\'c" d"#).unwrap()),
+            r#"["a", "b\\'c", "d"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split(r#"a "a\\b" d"#).unwrap()),
+            r#"["a", "a\\\\b", "d"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split(r#"a 'a\\b' d"#).unwrap()),
+            r#"["a", "a\\\\b", "d"]"#
+        );
+    }
+
+    #[test]
+    fn test_shell_split_errors() {
+        assert_eq!(
+            shell_split("a 'b").unwrap_err(),
+            ShellParseError::UnmatchedQuote('\'')
+        );
+        assert_eq!(
+            shell_split("a \"b c").unwrap_err(),
+            ShellParseError::UnmatchedQuote('"')
+        );
+        assert_eq!(
+            shell_split("a '").unwrap_err(),
+            ShellParseError::UnmatchedQuote('\'')
+        );
     }
 }

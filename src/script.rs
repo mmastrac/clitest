@@ -12,12 +12,12 @@ use keepcalm::SharedMut;
 use serde::{Serialize, ser::SerializeMap};
 use termcolor::{Color, ColorChoice, WriteColor};
 
-use crate::output::*;
 use crate::{
     command::CommandLine,
     util::{NicePathBuf, NiceTempDir},
 };
 use crate::{cwrite, cwriteln, cwriteln_rule};
+use crate::{output::*, util::ShellBit};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -253,8 +253,15 @@ impl ScriptRunContext {
         self.output.take_buffer()
     }
 
+    fn expand(&self, value: &ShellBit) -> Result<String, ScriptRunError> {
+        match value {
+            ShellBit::Literal(s) => Ok(s.clone()),
+            ShellBit::Quoted(s) => self.expand_str(s),
+        }
+    }
+
     /// Perform shell expansion on a string.
-    fn expand(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
+    fn expand_str(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
         enum State {
             Normal,
             EscapeNext,
@@ -686,6 +693,8 @@ pub enum ScriptErrorType {
     InvalidGlobalPattern,
     #[error("invalid block type")]
     InvalidBlockType,
+    #[error("invalid block arguments")]
+    InvalidBlockArgs,
     #[error("unsupported command position")]
     UnsupportedCommandPosition,
     #[error("invalid trailing pattern after *")]
@@ -1043,9 +1052,9 @@ impl Serialize for ScriptBlock {
 #[derive(Debug, Clone, Serialize)]
 pub enum InternalCommand {
     UsingTempdir,
-    UsingDir(String, bool),
-    ChangeDir(String),
-    Set(String, String),
+    UsingDir(ShellBit, bool),
+    ChangeDir(ShellBit),
+    Set(String, ShellBit),
 }
 
 impl InternalCommand {
@@ -1099,7 +1108,7 @@ impl InternalCommand {
             }
             InternalCommand::UsingDir(dir, new) => {
                 let current_pwd = context.pwd();
-                let dir = context.expand(dir)?;
+                let dir = context.expand(&dir)?;
                 let new_pwd = current_pwd.join(dir);
                 if new {
                     cwrite!(context.stream(), fg = Color::Yellow, "using new dir: ");
@@ -1140,7 +1149,7 @@ impl InternalCommand {
                 })))
             }
             InternalCommand::ChangeDir(dir) => {
-                let dir = context.expand(dir)?;
+                let dir = context.expand(&dir)?;
 
                 cwriteln!(context.stream(), fg = Color::Yellow, "cd {dir}");
                 cwriteln!(context.stream());
@@ -1150,7 +1159,7 @@ impl InternalCommand {
                 Ok(None)
             }
             InternalCommand::Set(name, value) => {
-                let value = context.expand(value)?;
+                let value = context.expand(&value)?;
 
                 context.set_env(&name, &value);
                 let new_value = context.get_env(&name).unwrap_or_default();
@@ -1175,7 +1184,7 @@ impl InternalCommand {
 pub enum IfCondition {
     True,
     False,
-    EnvEq(bool, String, String),
+    EnvEq(bool, String, ShellBit),
 }
 
 impl IfCondition {
@@ -1185,7 +1194,7 @@ impl IfCondition {
             IfCondition::False => false,
             IfCondition::EnvEq(negated, name, expected) => {
                 let value = context.get_env(name).unwrap_or_default();
-                (value == expected) ^ negated
+                (expected == value) ^ negated
             }
         }
     }
@@ -1196,7 +1205,11 @@ impl IfCondition {
             IfCondition::False => Ok(IfCondition::False),
             IfCondition::EnvEq(negated, name, expected) => {
                 let value = context.expand(expected)?;
-                Ok(IfCondition::EnvEq(*negated, name.clone(), value))
+                Ok(IfCondition::EnvEq(
+                    *negated,
+                    name.clone(),
+                    ShellBit::Literal(value),
+                ))
             }
         }
     }
@@ -1211,7 +1224,8 @@ impl Serialize for IfCondition {
             IfCondition::True => "true".serialize(serializer),
             IfCondition::False => "false".serialize(serializer),
             IfCondition::EnvEq(negated, name, value) => {
-                let mut ser = serializer.serialize_map(Some(2))?;
+                let mut ser = serializer.serialize_map(Some(3))?;
+                ser.serialize_entry("op", if *negated { "!=" } else { "==" })?;
                 ser.serialize_entry("env", name)?;
                 ser.serialize_entry("value", value)?;
                 ser.end()
@@ -1222,7 +1236,7 @@ impl Serialize for IfCondition {
 
 #[derive(Debug)]
 pub enum ForCondition {
-    Env(String, Vec<String>),
+    Env(String, Vec<ShellBit>),
 }
 
 impl Serialize for ForCondition {
@@ -1469,15 +1483,21 @@ $ cmd &
         context.set_env("A", "1");
         context.set_env("B", "2");
         context.set_env("C", "3");
-        assert_eq!(context.expand("$A").unwrap(), "1".to_string());
-        assert_eq!(context.expand("$A $B ").unwrap(), "1 2 ".to_string());
-        assert_eq!(context.expand("${A} ${B} ").unwrap(), "1 2 ".to_string());
-        assert_eq!(context.expand(r#"\$A"#).unwrap(), "$A".to_string());
-        assert_eq!(context.expand(r#"\${A}"#).unwrap(), "${A}".to_string());
-        assert_eq!(context.expand(r#"\\$A"#).unwrap(), r#"\1"#);
-        assert_eq!(context.expand(r#"\\${A}"#).unwrap(), r#"\1"#);
+        assert_eq!(context.expand_str("$A").unwrap(), "1".to_string());
+        assert_eq!(context.expand_str("$A $B ").unwrap(), "1 2 ".to_string());
+        assert_eq!(
+            context.expand_str("${A} ${B} ").unwrap(),
+            "1 2 ".to_string()
+        );
+        assert_eq!(context.expand_str(r#"\$A"#).unwrap(), "$A".to_string());
+        assert_eq!(context.expand_str(r#"\${A}"#).unwrap(), "${A}".to_string());
+        assert_eq!(context.expand_str(r#"\\$A"#).unwrap(), r#"\1"#);
+        assert_eq!(context.expand_str(r#"\\${A}"#).unwrap(), r#"\1"#);
         context.set_env("TEMP_DIR", "/tmp");
-        assert_eq!(context.expand("$TEMP_DIR").unwrap(), "/tmp".to_string());
-        assert_eq!(context.expand("${TEMP_DIR}").unwrap(), "/tmp".to_string());
+        assert_eq!(context.expand_str("$TEMP_DIR").unwrap(), "/tmp".to_string());
+        assert_eq!(
+            context.expand_str("${TEMP_DIR}").unwrap(),
+            "/tmp".to_string()
+        );
     }
 }

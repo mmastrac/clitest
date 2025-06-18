@@ -4,6 +4,8 @@ use std::sync::Arc;
 use crate::command::CommandLine;
 use crate::output::*;
 use crate::script::*;
+use crate::util::ShellBit;
+use crate::util::shell_split;
 
 #[derive(Debug, Clone, derive_more::IsVariant, derive_more::Unwrap)]
 enum BlockType {
@@ -104,8 +106,8 @@ impl std::fmt::Debug for ScriptV0Block {
 /// the script.
 enum ScriptV0Segment {
     Block(ScriptV0Block),
-    SubBlock(ScriptLocation, String, Vec<String>, Vec<ScriptV0Segment>),
-    Semi(ScriptLocation, String, Vec<String>),
+    SubBlock(ScriptLocation, String, Vec<ShellBit>, Vec<ScriptV0Segment>),
+    Semi(ScriptLocation, String, Vec<ShellBit>),
 }
 
 impl std::fmt::Debug for ScriptV0Segment {
@@ -319,27 +321,13 @@ fn segment_script(
                 segments.push(ScriptV0Segment::Block(segment));
             }
 
-            let args = shellish_parse::parse(args, shellish_parse::ParseOptions::default())
-                .map_err(|_| {
-                    ScriptError::new_with_data(
-                        ScriptErrorType::InvalidBlockType,
-                        line.location.clone(),
-                        format!("{block_type} {args}"),
-                    )
-                })?;
-
-            // Strip quotes from args. If an arg starts with " or ', remove the
-            // same quote from the end.
-            let args = args
-                .into_iter()
-                .map(|arg| {
-                    if arg.starts_with('"') || arg.starts_with('\'') {
-                        arg[1..arg.len() - 1].to_string()
-                    } else {
-                        arg
-                    }
-                })
-                .collect();
+            let args = shell_split(args).map_err(|_| {
+                ScriptError::new_with_data(
+                    ScriptErrorType::InvalidBlockArgs,
+                    line.location.clone(),
+                    format!("{block_type} {args}"),
+                )
+            })?;
 
             if is_semi {
                 segments.push(ScriptV0Segment::Semi(
@@ -623,24 +611,20 @@ fn parse_normalized_script_v0_commands(
                 global_reject,
             )?;
 
-            let text = format!("{} {}", block_type, args.join(" "))
-                .trim()
-                .to_owned();
-
             if block_type == "if" {
-                let condition = parse_if_condition(command.location().clone(), &text, args)?;
+                let condition = parse_if_condition(command.location().clone(), args)?;
                 commands.push(ScriptBlock::If(condition, blocks));
             } else if block_type == "for" {
                 if args.len() >= 3 && args[1] == "in" {
                     commands.push(ScriptBlock::For(
-                        ForCondition::Env(args[0].clone(), args[2..].to_vec()),
+                        ForCondition::Env(args[0].to_string(), args[2..].to_vec()),
                         blocks,
                     ));
                 } else {
                     return Err(ScriptError::new_with_data(
                         ScriptErrorType::InvalidBlockType,
                         command.location().clone(),
-                        text,
+                        format!("for {args:?}"),
                     ));
                 }
             } else if block_type == "background" {
@@ -691,7 +675,7 @@ fn parse_normalized_script_v0_commands(
             }
             if text == "set" && args.len() == 2 {
                 commands.push(ScriptBlock::InternalCommand(InternalCommand::Set(
-                    args[0].clone(),
+                    args[0].to_string(),
                     args[1].clone(),
                 )));
                 continue;
@@ -908,7 +892,7 @@ fn parse_script_v0_segment(
                 }
                 builder.ignore.extend(next.patterns);
             } else if text == "if" {
-                let condition = parse_if_condition(location.clone(), text, args)?;
+                let condition = parse_if_condition(location.clone(), args)?;
                 let new_builder = parse_script_v0_segments(segments, grok)?;
                 let pattern = OutputPattern {
                     pattern: OutputPatternType::If(
@@ -981,22 +965,29 @@ fn parse_script_v0_segment(
 
 fn parse_if_condition(
     location: ScriptLocation,
-    text: &str,
-    args: &[String],
+    args: &[ShellBit],
 ) -> Result<IfCondition, ScriptError> {
     if args.len() == 1 && args[0] == "true" {
         Ok(IfCondition::True)
     } else if args.len() == 1 && args[0] == "false" {
         Ok(IfCondition::False)
     } else if args.len() == 3 && args[1] == "==" {
-        Ok(IfCondition::EnvEq(false, args[0].clone(), args[2].clone()))
+        Ok(IfCondition::EnvEq(
+            false,
+            args[0].to_string(),
+            args[2].clone(),
+        ))
     } else if args.len() == 3 && args[1] == "!=" {
-        Ok(IfCondition::EnvEq(true, args[0].clone(), args[2].clone()))
+        Ok(IfCondition::EnvEq(
+            true,
+            args[0].to_string(),
+            args[2].clone(),
+        ))
     } else {
         return Err(ScriptError::new_with_data(
             ScriptErrorType::InvalidIfCondition,
             location.clone(),
-            format!("{text} {args:?}"),
+            format!("{args:?}"),
         ));
     }
 }

@@ -12,3 +12,23 @@ set FOO "$A $B";
 
 $ echo $FOO
 ! 1 2
+
+# The below lines match 'sh', not bash!
+set VAR 'a\\b';
+$ echo $VAR
+! a\b
+
+set VAR "a\\n";
+$ echo $VAR
+! a
+!
+
+set VAR "a\$b";
+
+$ echo $VAR
+! a$b
+
+set VAR 'a\$b';
+
+$ echo $VAR
+! a\$b

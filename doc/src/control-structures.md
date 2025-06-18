@@ -1,6 +1,20 @@
 # Control Structures
 
-clitest provides several control structures to help you write complex test scenarios.
+`clitest` provides several control structures to help you write complex test scenarios.
+
+## Quoting
+
+Note that internal commands and control structures follow shell-style syntax, so quoting
+is significant.
+
+Single quotes (`'`) preserve the literal value of every character within the
+quotes. No characters inside single quotes have special meaning.
+
+Double quotes (`"`) preserve the literal value of most characters, but still
+allow for variable expansion (e.g., `$VAR` or `${VAR}`).
+
+Backslashes (`\`) can be used to escape the next character, preserving its
+literal meaning. This works both inside double quotes and unquoted text.
 
 ## For Loops
 
