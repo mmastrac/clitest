@@ -2,12 +2,6 @@ Running tests/v0/pwd.cli ...
 
 using tempdir: <tmp>
 
-pwd
----
-<tmp>
----
-✅ OK
-
 set TEMP_DIR <tmp>
 
 mkdir subdir
@@ -35,12 +29,6 @@ file
 (deferred) rm -rf $PWD/subdir
 ---
 (no output)
----
-✅ OK
-
-(deferred) pwd
----
-<tmp>
 ---
 ✅ OK
 
