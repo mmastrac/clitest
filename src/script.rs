@@ -176,7 +176,7 @@ enum ScriptMode {
 #[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
-    pub envs: HashMap<String, String>,
+    env_vars: HashMap<String, String>,
     background: ScriptMode,
     #[debug(skip)]
     kill: ScriptKillReceiver,
@@ -190,7 +190,7 @@ impl Default for ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: ScriptRunArgs::default(),
-            envs: HashMap::new(),
+            env_vars: HashMap::new(),
             background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
@@ -204,7 +204,7 @@ impl ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: self.args.clone(),
-            envs: self.envs.clone(),
+            env_vars: self.env_vars.clone(),
             background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
@@ -215,7 +215,7 @@ impl ScriptRunContext {
     pub fn new_deferred(&self) -> Self {
         Self {
             args: self.args.clone(),
-            envs: self.envs.clone(),
+            env_vars: self.env_vars.clone(),
             background: ScriptMode::Deferred,
             kill: self.kill.clone(),
             kill_sender: self.kill_sender.clone(),
@@ -224,15 +224,29 @@ impl ScriptRunContext {
     }
 
     pub fn pwd(&self) -> NicePathBuf {
-        self.envs
+        self.env_vars
             .get("PWD")
             .cloned()
             .map(NicePathBuf::from)
             .unwrap_or_else(|| NicePathBuf::cwd())
     }
 
+    pub fn get_env(&self, name: &str) -> Option<&str> {
+        self.env_vars.get(name).map(|s| s.as_str())
+    }
+
+    pub fn set_env(&mut self, name: impl Into<String>, value: impl Into<String>) {
+        let name = name.into();
+        if name == "PWD" {
+            self.set_pwd(value.into());
+        } else {
+            self.env_vars.insert(name, value.into());
+        }
+    }
+
     pub fn set_pwd(&mut self, pwd: impl Into<NicePathBuf>) {
-        self.envs.insert("PWD".to_string(), pwd.into().env_string());
+        let pwd = pwd.into().env_string();
+        self.env_vars.insert("PWD".to_string(), pwd);
     }
 
     pub fn take_output(self) -> String {
@@ -278,7 +292,7 @@ impl ScriptRunContext {
                 }
                 State::InCurly => {
                     if c == '}' {
-                        if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
+                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
@@ -308,7 +322,7 @@ impl ScriptRunContext {
                     if c.is_alphanumeric() || c == '_' {
                         variable.push(c);
                     } else {
-                        if let Some(value) = self.envs.get(&std::mem::take(&mut variable)) {
+                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
@@ -324,7 +338,7 @@ impl ScriptRunContext {
         }
         match state {
             State::InDollar => {
-                if let Some(value) = self.envs.get(&variable) {
+                if let Some(value) = self.get_env(&variable) {
                     expanded.push_str(value);
                 } else {
                     return Err(ScriptRunError::ExpansionError(format!(
@@ -513,13 +527,13 @@ impl ScriptKillSender {
 
 impl ScriptRunContext {
     pub fn new(args: ScriptRunArgs, script_path: &Path) -> Self {
-        let mut envs = HashMap::new();
+        let mut env_vars = HashMap::new();
 
         macro_rules! target {
             ($env:ident, $var:ident, [$($vals:expr),*]) => {
                 $(
                 if cfg!($var = $vals) {
-                    envs.insert(stringify!($env).to_string(), $vals.to_string());
+                    env_vars.insert(stringify!($env).to_string(), $vals.to_string());
                 }
                 )*
             };
@@ -538,12 +552,12 @@ impl ScriptRunContext {
         );
 
         // Set the current working directory as a special variable "PWD"
-        envs.insert(
+        env_vars.insert(
             "PWD".to_string(),
-            script_path.parent().unwrap().to_string_lossy().to_string(),
+            NicePathBuf::from(script_path.parent().unwrap()).env_string(),
         );
         // Save the initial PWD as INITIAL_PWD so it can easily be restored
-        envs.insert("INITIAL_PWD".to_string(), envs["PWD"].clone());
+        env_vars.insert("INITIAL_PWD".to_string(), env_vars["PWD"].clone());
 
         let kill = Arc::new(AtomicBool::new(false));
 
@@ -557,7 +571,7 @@ impl ScriptRunContext {
 
         Self {
             args,
-            envs,
+            env_vars,
             background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
@@ -934,7 +948,7 @@ impl ScriptBlock {
             ScriptBlock::For(ForCondition::Env(env, values), blocks) => {
                 let mut results = Vec::new();
                 for value in values {
-                    context.envs.insert(env.clone(), context.expand(value)?);
+                    context.set_env(env.clone(), context.expand(value)?);
                     results.extend(Self::run_blocks(context, blocks)?);
                 }
                 Ok(results)
@@ -1141,7 +1155,7 @@ impl InternalCommand {
                 cwriteln!(context.stream(), fg = Color::Yellow, "set {name} {value}");
                 cwriteln!(context.stream());
 
-                context.envs.insert(name.clone(), value);
+                context.set_env(name, value);
                 Ok(None)
             }
         }
@@ -1161,11 +1175,7 @@ impl IfCondition {
             IfCondition::True => true,
             IfCondition::False => false,
             IfCondition::EnvEq(negated, name, expected) => {
-                let value = context
-                    .envs
-                    .get(name)
-                    .map(|s| s.as_str())
-                    .unwrap_or_default();
+                let value = context.get_env(name).unwrap_or_default();
                 (value == expected) ^ negated
             }
         }
@@ -1238,6 +1248,10 @@ impl ScriptCommand {
         let command = &self.command;
         let args = &context.args;
 
+        if let Some(delay) = args.delay_steps {
+            std::thread::sleep(std::time::Duration::from_millis(delay));
+        }
+
         for line in command.command.split('\n') {
             cwriteln!(context.stream(), fg = Color::Green, "{}", line);
         }
@@ -1246,22 +1260,20 @@ impl ScriptCommand {
             &mut context.stream(),
             context.args.show_line_numbers,
             context.args.runner.clone(),
-            &context.envs,
+            &context.env_vars,
             &context.kill,
         )?;
-
-        // Side-effects
-        if let Some(set_var) = &self.set_var {
-            context
-                .envs
-                .insert(set_var.clone(), output.to_string().trim().to_string());
-        }
 
         let exit_result = if !self.exit.matches(status) {
             ExitResult::Mismatch(status)
         } else {
             ExitResult::Matches(status)
         };
+
+        // Side-effects
+        if let Some(set_var) = &self.set_var {
+            context.set_env(set_var, output.to_string().trim());
+        }
 
         let match_context = OutputMatchContext::new(context);
         let pattern_result = match self.pattern.matches(match_context.clone(), output.clone()) {
@@ -1289,10 +1301,6 @@ impl ScriptCommand {
             cwriteln!(context.stream(), dimmed = true, "(no output)");
         }
         cwriteln_rule!(context.stream());
-
-        if let Some(delay) = args.delay_steps {
-            std::thread::sleep(std::time::Duration::from_millis(delay));
-        }
 
         Ok(ScriptResult {
             command: command.clone(),
@@ -1449,9 +1457,9 @@ $ cmd &
     #[test]
     fn test_script_run_context_expand() {
         let mut context = ScriptRunContext::new(ScriptRunArgs::default(), &Path::new("."));
-        context.envs.insert("A".to_string(), "1".to_string());
-        context.envs.insert("B".to_string(), "2".to_string());
-        context.envs.insert("C".to_string(), "3".to_string());
+        context.set_env("A", "1");
+        context.set_env("B", "2");
+        context.set_env("C", "3");
         assert_eq!(context.expand("$A").unwrap(), "1".to_string());
         assert_eq!(context.expand("$A $B ").unwrap(), "1 2 ".to_string());
         assert_eq!(context.expand("${A} ${B} ").unwrap(), "1 2 ".to_string());
@@ -1459,9 +1467,7 @@ $ cmd &
         assert_eq!(context.expand(r#"\${A}"#).unwrap(), "${A}".to_string());
         assert_eq!(context.expand(r#"\\$A"#).unwrap(), r#"\1"#);
         assert_eq!(context.expand(r#"\\${A}"#).unwrap(), r#"\1"#);
-        context
-            .envs
-            .insert("TEMP_DIR".to_string(), "/tmp".to_string());
+        context.set_env("TEMP_DIR", "/tmp");
         assert_eq!(context.expand("$TEMP_DIR").unwrap(), "/tmp".to_string());
         assert_eq!(context.expand("${TEMP_DIR}").unwrap(), "/tmp".to_string());
     }

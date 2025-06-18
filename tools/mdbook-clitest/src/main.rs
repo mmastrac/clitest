@@ -67,7 +67,7 @@ impl Preprocessor for ClitestPreprocessor {
                                 ..Default::default()
                             };
                             let mut context = ScriptRunContext::new(args, script_path.as_path());
-                            context.envs.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+                            context.set_env("PATH".to_string(), "/usr/bin:/bin".to_string());
                             match script.run(&mut context) {
                                 Ok(_) => {}
                                 Err(e) => {

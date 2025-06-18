@@ -60,6 +60,12 @@ impl From<&'_ NicePathBuf> for NicePathBuf {
     }
 }
 
+impl From<&'_ Path> for NicePathBuf {
+    fn from(path: &Path) -> Self {
+        NicePathBuf::new(path.to_owned())
+    }
+}
+
 impl NicePathBuf {
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
@@ -289,7 +295,7 @@ fn write_pretty_path(
             } else {
                 write!(f, "{}", path.display())?;
             }
-        } else if !debug && cfg!(windows) {
+        } else if cfg!(windows) {
             let path = Path::new("%TEMP%").join(path);
             if debug {
                 write_debug_path(f, &path)?;
@@ -402,8 +408,8 @@ mod tests {
 
         let path = NicePathBuf::new(&tmp);
 
-        assert_eq!(r#"%TEMP%\hello.world"#, format!("{}", path));
-        assert_eq!(r#""%TEMP%\\hello.world""#, format!("{:?}", path));
+        assert_eq!(r"%TEMP%\hello.world", format!("{}", path));
+        assert_eq!(r"<%TEMP%\hello.world>", format!("{:?}", path));
 
         let path = NicePathBuf::new(
             &std::env::temp_dir()
@@ -412,12 +418,12 @@ mod tests {
                 .join("hello.world"),
         );
 
-        assert_eq!(r#"%TEMP%\hello.world"#, format!("{}", path));
-        assert_eq!(r#""%TEMP%\\hello.world""#, format!("{:?}", path));
+        assert_eq!(r"%TEMP%\hello.world", format!("{}", path));
+        assert_eq!(r"<%TEMP%\hello.world>", format!("{:?}", path));
 
         let path = NicePathBuf::new(r#"C:\directory"#);
 
-        assert_eq!(r#"C:\directory"#, format!("{}", path));
-        assert_eq!(r#""C:\\directory""#, format!("{:?}", path));
+        assert_eq!(r"C:\directory", format!("{}", path));
+        assert_eq!(r"<C:\directory>", format!("{:?}", path));
     }
 }
