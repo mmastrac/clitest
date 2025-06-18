@@ -313,12 +313,13 @@ fn write_pretty_path(
             if let Some(Component::Prefix(prefix)) = canon_path.components().next() {
                 // This is a backslash explosion in debug mode...
                 if let Prefix::VerbatimDisk(_) = prefix.kind() {
-                    return write!(f, "{}", format!("{:?}", canon_path).replace(r"\\\\?\\", ""));
+                    return f
+                        .write_str(&format!("<{}>", canon_path.display()).replace(r"\\?\", ""));
                 }
             }
         }
 
-        write!(f, "{:?}", canon_path)?;
+        write_debug_path(f, &canon_path)?;
         return Ok(());
     }
 
