@@ -14,7 +14,7 @@ static CANONICAL_TEMP_DIR: SharedGlobalMut<PathBuf> = SharedGlobalMut::new_lazy(
     } else {
         std::env::temp_dir()
     };
-    match tmp.canonicalize() {
+    match dunce::canonicalize(&tmp) {
         Ok(canonical) => canonical,
         Err(_) => tmp,
     }
@@ -22,14 +22,15 @@ static CANONICAL_TEMP_DIR: SharedGlobalMut<PathBuf> = SharedGlobalMut::new_lazy(
 
 static CANONICAL_CWD: SharedGlobalMut<Option<PathBuf>> = SharedGlobalMut::new_lazy(|| {
     let cwd = std::env::current_dir().ok()?;
-    match cwd.canonicalize() {
+    match dunce::canonicalize(&cwd) {
         Ok(canonical) => Some(canonical),
-        Err(_) => None,
+        Err(_) => Some(cwd),
     }
 });
 
-static CANONICAL_HOME_DIR: SharedGlobalMut<Option<PathBuf>> =
-    SharedGlobalMut::new_lazy(|| dirs::home_dir().map(|home| home.canonicalize().unwrap_or(home)));
+static CANONICAL_HOME_DIR: SharedGlobalMut<Option<PathBuf>> = SharedGlobalMut::new_lazy(|| {
+    dirs::home_dir().map(|home| dunce::canonicalize(&home).unwrap_or(home))
+});
 
 #[derive(Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct NicePathBuf {
@@ -104,18 +105,15 @@ impl NicePathBuf {
     /// choose the shortest (ie: /tmp on macOS rather than /private/tmp).
     pub fn env_string(&self) -> String {
         let path = &self.path;
-        if let Ok(canonical) = path.canonicalize() {
-            if cfg!(target_vendor = "apple") {
-                if let Ok(tmp) = canonical.strip_prefix(CANONICAL_TEMP_DIR.read()) {
-                    format!("/tmp/{}", tmp.display())
-                } else {
-                    canonical.display().to_string()
-                }
+        let canonical = canonicalize_path(path);
+        if cfg!(target_vendor = "apple") {
+            if let Ok(tmp) = canonical.strip_prefix(CANONICAL_TEMP_DIR.read()) {
+                format!("/tmp/{}", tmp.display())
             } else {
                 canonical.display().to_string()
             }
         } else {
-            path.display().to_string()
+            canonical.display().to_string()
         }
     }
 }
@@ -199,7 +197,7 @@ impl From<&'_ NiceTempDir> for NicePathBuf {
 
 /// Best effort to canonicalize a path.
 fn canonicalize_path(path: &Path) -> Cow<Path> {
-    if let Ok(path) = path.canonicalize() {
+    if let Ok(path) = dunce::canonicalize(path) {
         return path.into();
     }
 
@@ -214,7 +212,7 @@ fn canonicalize_path(path: &Path) -> Cow<Path> {
     // component that exists.
     let mut path = path;
     while let Some(parent) = path.parent() {
-        if let Ok(mut path) = parent.canonicalize() {
+        if let Ok(mut path) = dunce::canonicalize(&parent) {
             for component in rest.components() {
                 match component {
                     Component::ParentDir => {

@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .scripts
         .iter()
         .map(|path| {
-            let canonical_path = path.canonicalize()?;
+            let canonical_path = dunce::canonicalize(path)?;
             let script_dir = canonical_path
                 .parent()
                 .ok_or("failed to get script directory")?
