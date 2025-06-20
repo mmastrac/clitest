@@ -1,0 +1,15 @@
+[package]
+name = "clitest-integration"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+clitest-lib = { path = "../clitest-lib", features = ["__testing"] }
+pretty_assertions = "1"
+termcolor = "1"
+dunce = "1.0.3"
+
+[[test]]
+name = "integration_tests"
+harness = false

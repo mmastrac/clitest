@@ -1,12 +1,10 @@
-# Sample workflow for building and deploying a mdBook site to GitHub Pages
-#
-# To get started with mdBook see: https://rust-lang.github.io/mdBook/index.html
-#
 name: Deploy mdBook site to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Run on pushes to master or pull requests to master
   push:
+    branches: ["master"]
+  pull_request:
     branches: ["master"]
 
   # Allows you to run this workflow manually from the Actions tab
@@ -39,7 +37,7 @@ jobs:
           crate: mdbook
           version: ${{ env.MDBOOK_VERSION }}
       - name: Cargo build
-        run: cargo build --bin mdbook-clitest -p mdbook-clitest
+        run: cargo build --bin mdbook-clitest -p clitest-mdbook
       - name: Add target/ to path
         run: echo "PATH=$PATH:$PWD/target/debug/" >> "$GITHUB_ENV"
       - name: Setup Pages
@@ -64,4 +62,5 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
+        if: github.event_name != 'pull_request'
         uses: actions/deploy-pages@v4

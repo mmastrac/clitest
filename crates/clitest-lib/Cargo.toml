@@ -1,0 +1,49 @@
+[package]
+name = "clitest-lib"
+license = "MIT/Apache-2.0"
+version = "0.1.21"
+authors = ["Matt Mastracci <matthew@mastracci.com>"]
+edition = "2024"
+description = "CLI-based testing library."
+repository = "https://github.com/mmastrac/clitest"
+readme = "../../README.md"
+
+[features]
+__testing = []
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+shellish_parse = "2"
+thiserror = "2"
+grok = "2.1"
+onig = { version = "6.5", default-features = false }
+derive_more = { version = "2", features = ["display", "debug", "is_variant", "unwrap"] }
+termcolor = "1"
+termsize = "0.1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+unicode-width = "0.2"
+unicode-segmentation = "1.12"
+dirs = "6"
+pathdiff = "0.2.3"
+toml = "0.8"
+serde_yaml = "0.9"
+signal-child = "1"
+utf8-supported = "0.1"
+tempfile = "3"
+keepcalm = "0.4"
+derive-io = "0.3"
+unflatter = "0.1"
+dunce = "1.0.3"
+
+[dev-dependencies]
+pretty_assertions = "1"
+
+[target.'cfg(windows)'.dependencies]
+win32job = "2"
+tlhelp32 = "1"
+windows-sys = { version = "0.59.0", features = ["Win32_System_Threading"] }
+
+[lib]
+name = "clitest_lib"
+path = "src/lib.rs" 

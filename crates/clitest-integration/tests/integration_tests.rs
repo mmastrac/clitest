@@ -1,19 +1,20 @@
 use std::path::Path;
 
-use clitest::{
+use clitest_lib::{
     cprint, cprintln, cprintln_rule, cwriteln,
     parser::parse_script,
     script::{ScriptFile, ScriptRunArgs, ScriptRunContext},
     term::Color,
-    testing::TestCase,
 };
 
-fn main() {
+use clitest_integration::testing::{TestCase, load_test_scripts};
+
+pub fn run() {
     let mut total = 0;
     let mut failed = 0;
     cprintln!();
 
-    let tests = clitest::testing::load_test_scripts(std::env::args().nth(1).as_deref());
+    let tests = load_test_scripts(std::env::args().nth(1).as_deref());
     let mut failed_tests = Vec::new();
 
     for test in tests {
@@ -104,21 +105,17 @@ fn main() {
     }
 }
 
-/// Munge the output to make it easier to compare.
-fn munge_output(s: &str) -> String {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .canonicalize()
-        .unwrap()
-        .display()
-        .to_string()
-        .replace(r"\\?\", "");
+fn main() {
+    run();
+}
 
-    let tmp = std::env::temp_dir()
-        .canonicalize()
+/// Munge the output to make it easier to compare.
+fn munge_output(root: &str, s: &str) -> String {
+    let tmp = dunce::canonicalize(std::env::temp_dir())
         .unwrap()
-        .display()
-        .to_string()
-        .replace(r"\\?\", "");
+        .to_str()
+        .unwrap()
+        .to_owned();
 
     let apple_path = tmp.strip_prefix("/private");
     let tmps = if tmp != "/tmp" {
@@ -141,7 +138,7 @@ fn munge_output(s: &str) -> String {
     #[cfg(windows)]
     let s = s.replace(r"\\?\", "");
     for line in s.lines() {
-        munge_line(&root, &tmps, &mut output, line);
+        munge_line(root, &tmps, &mut output, line);
     }
     if cfg!(windows) {
         output = output.replace("\\", "/");
@@ -149,7 +146,7 @@ fn munge_output(s: &str) -> String {
     output
 }
 
-fn munge_line(root: &String, tmp: &[&str], output: &mut String, line: &str) {
+fn munge_line(root: &str, tmp: &[&str], output: &mut String, line: &str) {
     // Windows/Unix differs here
     #[cfg(windows)]
     let line = line.replace("exit code", "exit status");
@@ -203,7 +200,8 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
 
 fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
     let output = context.take_output();
-    let b = munge_output(&output);
+    let root = test.path.parent().unwrap().to_str().unwrap();
+    let b = munge_output(root, &output);
 
     if std::env::var("UPDATE_TESTS").is_ok() {
         if let Some(expected_output_file) = &test.expected_output_file {
@@ -212,7 +210,7 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
     }
 
     if let Some(expected_output) = &test.expected_output {
-        let a = munge_output(expected_output);
+        let a = munge_output(root, expected_output);
         if a == b {
             return true;
         }
@@ -237,12 +235,10 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_munge_output() {
         let root = "/root".to_string();
-        let tmp = "/tmp".to_string();
+        let tmp = ["/tmp"];
 
         let mut output = String::new();
         munge_line(&root, &tmp, &mut output, "This is /tmp");

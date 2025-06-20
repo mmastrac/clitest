@@ -28,7 +28,7 @@ cleaning up
 ---
 ✅ OK
 
-(cleanup) removing <tmp> && cd <root>/tests/v0
+(cleanup) removing <tmp> && cd <root>
 
 tests/v0/using_tempdir.cli PASSED
 1 test(s) passed

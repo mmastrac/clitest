@@ -62,7 +62,7 @@ file2
 ---
 ✅ OK
 
-(cleanup) removing <tmp> && cd <root>/tests/v0
+(cleanup) removing <tmp> && cd <root>
 
 tests/v0/file_system.cli PASSED
 1 test(s) passed
