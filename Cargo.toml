@@ -38,6 +38,7 @@ tempfile = "3"
 keepcalm = "0.4"
 derive-io = "0.3"
 unflatter = "0.1"
+dunce = "1.0.3"
 
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
