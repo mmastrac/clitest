@@ -51,14 +51,14 @@ Run commands in the background using `background { }`. When the block ends, the 
 using tempdir;
 
 background {
-    $ python3 -m http.server 60800 2> server.log
+    $ python3 -m http.server 60801 2> server.log
     %EXIT any
 }
 
 $ echo "OK" > health
 
 retry {
-    $ curl -s http://localhost:60800/health
+    $ curl -s http://localhost:60801/health
     ! OK
 }
 ```
