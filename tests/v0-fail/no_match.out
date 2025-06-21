@@ -1,17 +1,17 @@
-Running tests/v0-fail/no_match.cli ...
+Running <root>/no_match.cli ...
 
 printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern literal at line tests/v0-fail/no_match.cli:4 does not match output line "hello"
+ERROR: pattern literal at line <root>/no_match.cli:4 does not match output line "hello"
 matching Sequence([Literal(bye), End])
   matching Literal(bye)
   literal FAILED match: "hello" == "bye"
 
 ❌ FAIL
 
-tests/v0-fail/no_match.cli FAILED
-Error: pattern literal at line tests/v0-fail/no_match.cli:4 does not match output line "hello"
+<root>/no_match.cli FAILED
+Error: pattern literal at line <root>/no_match.cli:4 does not match output line "hello"
 
 1/1 test(s) failed

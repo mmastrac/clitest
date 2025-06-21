@@ -1,4 +1,4 @@
-Running tests/v0-fail/exit_mismatch.cli ...
+Running <root>/exit_mismatch.cli ...
 
 exit 1
 ---
@@ -7,7 +7,7 @@ exit 1
 ❌ FAIL: exit status: 1
  → exit 1
 
-tests/v0-fail/exit_mismatch.cli FAILED
+<root>/exit_mismatch.cli FAILED
 Error: exit status: 1
 
 1/1 test(s) failed

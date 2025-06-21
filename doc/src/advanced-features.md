@@ -127,8 +127,8 @@ using tempdir;
 
 # Start server in background
 background {
-    $ echo "OK" > health
     $ echo "{\"status\": \"success\"}" > api
+    $ echo "OK" > health
     $ python3 -m http.server 60800 2> server.log
     %EXIT any
 }

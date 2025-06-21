@@ -1,4 +1,4 @@
-Running tests/v0-fail/expect_mismatch.cli ...
+Running <root>/expect_mismatch.cli ...
 
 printf "hello\n"
 ---
@@ -7,7 +7,7 @@ hello
 ❌ FAIL (output shouldn't match)
  → printf "hello\n"
 
-tests/v0-fail/expect_mismatch.cli FAILED
+<root>/expect_mismatch.cli FAILED
 Error: expected failure, but passed
 
 1/1 test(s) failed

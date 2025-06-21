@@ -1,4 +1,4 @@
-Running tests/v0/whitespace.cli ...
+Running <root>/whitespace.cli ...
 
 printf "  X  \n"
 ---
@@ -62,5 +62,5 @@ def
 ---
 ✅ OK
 
-tests/v0/whitespace.cli PASSED
+<root>/whitespace.cli PASSED
 1 test(s) passed

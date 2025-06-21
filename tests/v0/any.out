@@ -1,4 +1,4 @@
-Running tests/v0/any.cli ...
+Running <root>/any.cli ...
 
 printf "a\nb\nc\n"
 ---
@@ -71,5 +71,5 @@ end
 ---
 ✅ OK
 
-tests/v0/any.cli PASSED
+<root>/any.cli PASSED
 1 test(s) passed

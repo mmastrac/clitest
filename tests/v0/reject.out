@@ -1,4 +1,4 @@
-Running tests/v0/reject.cli ...
+Running <root>/reject.cli ...
 
 printf "Hello, world!\n"
 ---
@@ -6,5 +6,5 @@ Hello, world!
 ---
 ✅ OK
 
-tests/v0/reject.cli PASSED
+<root>/reject.cli PASSED
 1 test(s) passed

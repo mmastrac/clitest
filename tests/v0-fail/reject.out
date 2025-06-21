@@ -1,10 +1,10 @@
-Running tests/v0-fail/reject.cli ...
+Running <root>/reject.cli ...
 
 printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern reject at line tests/v0-fail/reject.cli:5 does not match output line "<eof>"
+ERROR: pattern reject at line <root>/reject.cli:5 does not match output line "<eof>"
 matching Any(End)
   matching End
   -matching Literal(hello)
@@ -14,7 +14,7 @@ matching Any(End)
 
 ❌ FAIL
 
-tests/v0-fail/reject.cli FAILED
-Error: pattern reject at line tests/v0-fail/reject.cli:5 does not match output line "<eof>"
+<root>/reject.cli FAILED
+Error: pattern reject at line <root>/reject.cli:5 does not match output line "<eof>"
 
 1/1 test(s) failed

@@ -1,4 +1,4 @@
-Running tests/v0/pwd.cli ...
+Running <root>/pwd.cli ...
 
 using tempdir: <tmp>
 
@@ -32,7 +32,7 @@ file
 ---
 ✅ OK
 
-(cleanup) removing <tmp> && cd <root>/tests/v0
+(cleanup) removing <tmp> && cd <root>
 
-tests/v0/pwd.cli PASSED
+<root>/pwd.cli PASSED
 1 test(s) passed

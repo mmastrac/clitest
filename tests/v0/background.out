@@ -1,4 +1,4 @@
-Running tests/v0/background.cli ...
+Running <root>/background.cli ...
 
 using tempdir: <tmp>
 
@@ -16,7 +16,7 @@ background
 ---
 ✅ OK (signal: 1 (SIGHUP))
 
-(cleanup) removing <tmp> && cd <root>/tests/v0
+(cleanup) removing <tmp> && cd <root>
 
-tests/v0/background.cli PASSED
+<root>/background.cli PASSED
 1 test(s) passed

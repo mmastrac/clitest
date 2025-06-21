@@ -1,4 +1,4 @@
-Running tests/v0/empty3.cli ...
+Running <root>/empty3.cli ...
 
-tests/v0/empty3.cli PASSED
+<root>/empty3.cli PASSED
 1 test(s) passed

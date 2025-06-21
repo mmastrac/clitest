@@ -1,29 +1,40 @@
-use std::path::Path;
-
-use clitest::{
+use clitest_lib::{
     cprint, cprintln, cprintln_rule, cwriteln,
     parser::parse_script,
     script::{ScriptFile, ScriptRunArgs, ScriptRunContext},
     term::Color,
-    testing::TestCase,
+    util::NicePathBuf,
 };
 
-fn main() {
+use clitest_integration::testing::{TestCase, load_test_scripts, root_dir, tests_dir};
+
+pub fn run() {
+    let root = root_dir();
+    eprintln!("root = {:?}", root);
+    std::env::set_current_dir(&root)
+        .expect(&format!("failed to set current directory to {root:?}"));
+
     let mut total = 0;
     let mut failed = 0;
     cprintln!();
 
-    let tests = clitest::testing::load_test_scripts(std::env::args().nth(1).as_deref());
+    let tests = load_test_scripts(std::env::args().nth(1).as_deref());
+
+    eprintln!(
+        "Running {} test(s) from {}",
+        tests.len(),
+        NicePathBuf::from(tests_dir())
+    );
+
     let mut failed_tests = Vec::new();
 
     for test in tests {
-        let is_fail = test.path.to_str().unwrap().contains("-fail");
+        let is_fail = test.path.to_string().contains("-fail");
         cprint!("Running ");
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
 
-        let script =
-            parse_script(ScriptFile::new(test.relative_path.clone()), &test.content).unwrap();
+        let script = parse_script(ScriptFile::new(&test.path), &test.content).unwrap();
         total += 1;
         let args = ScriptRunArgs {
             quiet: true,
@@ -31,20 +42,16 @@ fn main() {
             ..Default::default()
         };
         let mut context = ScriptRunContext::new(args, &test.path);
-        cwriteln!(
-            context.stream(),
-            "Running {} ...",
-            test.relative_path.display()
-        );
+        cwriteln!(context.stream(), "Running {} ...", test.path);
         cwriteln!(context.stream());
         let res = script.run(&mut context);
         if let Err(e) = &res {
-            cwriteln!(context.stream(), "{} FAILED", test.relative_path.display());
+            cwriteln!(context.stream(), "{} FAILED", test.path);
             cwriteln!(context.stream(), "Error: {}", e);
             cwriteln!(context.stream());
             cwriteln!(context.stream(), "1/1 test(s) failed");
         } else {
-            cwriteln!(context.stream(), "{} PASSED", test.relative_path.display());
+            cwriteln!(context.stream(), "{} PASSED", test.path);
             cwriteln!(context.stream(), "1 test(s) passed");
         }
 
@@ -104,21 +111,17 @@ fn main() {
     }
 }
 
-/// Munge the output to make it easier to compare.
-fn munge_output(s: &str) -> String {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .canonicalize()
-        .unwrap()
-        .display()
-        .to_string()
-        .replace(r"\\?\", "");
+fn main() {
+    run();
+}
 
-    let tmp = std::env::temp_dir()
-        .canonicalize()
+/// Munge the output to make it easier to compare.
+fn munge_output(root: &str, s: &str) -> String {
+    let tmp = dunce::canonicalize(std::env::temp_dir())
         .unwrap()
-        .display()
-        .to_string()
-        .replace(r"\\?\", "");
+        .to_str()
+        .unwrap()
+        .to_owned();
 
     let apple_path = tmp.strip_prefix("/private");
     let tmps = if tmp != "/tmp" {
@@ -141,7 +144,7 @@ fn munge_output(s: &str) -> String {
     #[cfg(windows)]
     let s = s.replace(r"\\?\", "");
     for line in s.lines() {
-        munge_line(&root, &tmps, &mut output, line);
+        munge_line(root, &tmps, &mut output, line);
     }
     if cfg!(windows) {
         output = output.replace("\\", "/");
@@ -149,7 +152,7 @@ fn munge_output(s: &str) -> String {
     output
 }
 
-fn munge_line(root: &String, tmp: &[&str], output: &mut String, line: &str) {
+fn munge_line(root: &str, tmp: &[&str], output: &mut String, line: &str) {
     // Windows/Unix differs here
     #[cfg(windows)]
     let line = line.replace("exit code", "exit status");
@@ -203,7 +206,8 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
 
 fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
     let output = context.take_output();
-    let b = munge_output(&output);
+    let root = &NicePathBuf::from(test.path.as_ref().parent().unwrap()).to_string();
+    let b = munge_output(root, &output);
 
     if std::env::var("UPDATE_TESTS").is_ok() {
         if let Some(expected_output_file) = &test.expected_output_file {
@@ -212,15 +216,11 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
     }
 
     if let Some(expected_output) = &test.expected_output {
-        let a = munge_output(expected_output);
+        let a = munge_output(root, expected_output);
         if a == b {
             return true;
         }
-        cprintln!(
-            fg = Color::Red,
-            "⚠️  Contents differ for {}!",
-            test.relative_path.display()
-        );
+        cprintln!(fg = Color::Red, "⚠️  Contents differ for {}!", test.path);
         cprintln_rule!();
         let comparison = pretty_assertions::StrComparison::new(&a, &b);
         cprintln!("{}", comparison);
@@ -237,12 +237,10 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_munge_output() {
         let root = "/root".to_string();
-        let tmp = "/tmp".to_string();
+        let tmp = ["/tmp"];
 
         let mut output = String::new();
         munge_line(&root, &tmp, &mut output, "This is /tmp");

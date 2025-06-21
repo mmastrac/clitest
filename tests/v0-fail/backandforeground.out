@@ -1,4 +1,4 @@
-Running tests/v0-fail/backandforeground.cli ...
+Running <root>/backandforeground.cli ...
 
 exit 2
 ---
@@ -14,7 +14,7 @@ exit 2
 ❌ FAIL: exit status: 1
  → exit 1
 
-tests/v0-fail/backandforeground.cli FAILED
+<root>/backandforeground.cli FAILED
 Error: exit status: 1
 
 1/1 test(s) failed

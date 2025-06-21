@@ -1,4 +1,4 @@
-Running tests/v0/path_with_spaces.cli ...
+Running <root>/path_with_spaces.cli ...
 
 printf "Path: /AAAAA/BBBBB/CCCCC/DDDDDDDDDDDDDD EEEEEEEEEEEEEEEEEEEEEEEE/\n"
 ---
@@ -6,5 +6,5 @@ Path: /AAAAA/BBBBB/CCCCC/DDDDDDDDDDDDDD EEEEEEEEEEEEEEEEEEEEEEEE/
 ---
 ✅ OK
 
-tests/v0/path_with_spaces.cli PASSED
+<root>/path_with_spaces.cli PASSED
 1 test(s) passed

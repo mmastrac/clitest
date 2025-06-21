@@ -1,4 +1,4 @@
-Running tests/v0/for.cli ...
+Running <root>/for.cli ...
 
 printf "$x\n"
 ---
@@ -54,5 +54,5 @@ echo $LAST
 ---
 ✅ OK
 
-tests/v0/for.cli PASSED
+<root>/for.cli PASSED
 1 test(s) passed
