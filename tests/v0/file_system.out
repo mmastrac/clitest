@@ -65,4 +65,3 @@ file2
 (cleanup) removing <tmp> && cd <root>
 
 <root>/file_system.cli PASSED
-1 test(s) passed

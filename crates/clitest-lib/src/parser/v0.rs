@@ -238,7 +238,7 @@ pub fn parse_script(file_name: ScriptFile, script: &str) -> Result<Script, Scrip
     let lines = ScriptLine::parse(file_name.clone(), script);
     let segments = segment_script(true, &mut lines.as_slice())?;
     let normalized = normalize_segments(segments);
-    parse_normalized_script_v0(&normalized)
+    parse_normalized_script_v0(&normalized, file_name)
 }
 
 /// Split the script into parsing segments. These allow us to more easily parse
@@ -563,7 +563,10 @@ impl OutputPatternBuilder {
     }
 }
 
-fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, ScriptError> {
+fn parse_normalized_script_v0(
+    segments: &[ScriptV0Segment],
+    file: ScriptFile,
+) -> Result<Script, ScriptError> {
     // Handle the preamble before the first command block
 
     let preamble_index = segments
@@ -587,7 +590,11 @@ fn parse_normalized_script_v0(segments: &[ScriptV0Segment]) -> Result<Script, Sc
     let commands =
         parse_normalized_script_v0_commands(rest, &mut grok, &global_ignore, &global_reject)?;
 
-    Ok(Script { commands, grok })
+    Ok(Script {
+        commands,
+        file,
+        grok,
+    })
 }
 
 fn parse_normalized_script_v0_commands(

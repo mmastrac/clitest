@@ -5,14 +5,14 @@ members = ["crates/*"]
 [workspace.dependencies]
 clitest-lib = { path = "crates/clitest-lib", version = "0.1.21" }
 
-clap = "4.5"
+clap = "4.5.40"
 derive-io = "0.3"
 derive_more = "2"
 dirs = "6"
 dunce = "1.0.3"
 grok = "2.1"
 keepcalm = "0.4"
-mdbook = "0.4"
+mdbook = "0.4.51"
 onig = { version = "6.5", default-features = false }
 pathdiff = "0.2.3"
 pretty_assertions = "1"

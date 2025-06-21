@@ -10,4 +10,3 @@ exit 1
 <root>/exit_fail.cli FAILED
 Error: exit status: 1
 
-1/1 test(s) failed

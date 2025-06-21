@@ -1,7 +1,8 @@
 use clap::{Parser, ValueEnum};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use termcolor::Color;
 
+use clitest_lib::script::ScriptOutput;
 use clitest_lib::*;
 
 use parser::parse_script;
@@ -33,8 +34,16 @@ struct Args {
     ignore_matches: bool,
 
     /// Quiet.
-    #[arg(long)]
+    #[arg(long, short)]
     quiet: bool,
+
+    /// Verbose output
+    #[arg(long, short)]
+    verbose: bool,
+
+    /// Command timeout in seconds.
+    #[arg(long)]
+    timeout: Option<f32>,
 
     /// Show line numbers in command output.
     #[arg(long)]
@@ -55,7 +64,6 @@ struct Args {
 
 struct ScriptToRun {
     original_path: ScriptFile,
-    script_dir: PathBuf,
     canonical_path: PathBuf,
     script: Script,
 }
@@ -68,15 +76,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .map(|path| {
             let canonical_path = dunce::canonicalize(path)?;
-            let script_dir = canonical_path
-                .parent()
-                .ok_or("failed to get script directory")?
-                .to_path_buf();
             let script_file = ScriptFile::new(path.clone());
             let script = parse_script(script_file.clone(), &std::fs::read_to_string(path)?)?;
             Ok(ScriptToRun {
                 original_path: script_file.clone(),
-                script_dir,
                 canonical_path,
                 script,
             })
@@ -136,39 +139,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             show_line_numbers: args.show_line_numbers,
             quiet: args.quiet,
             no_color: false,
-            timeout: None,
+            verbose: args.verbose,
+            timeout: args.timeout.map(Duration::from_secs_f32),
+            simplified_output: false,
         };
 
-        let mut context = ScriptRunContext::new(args, &script.canonical_path);
-
-        if context.args.quiet {
+        if args.quiet {
+            cprint!("Running ");
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
-            match script.script.run(&mut context) {
+            match script.script.run_with_args(args, ScriptOutput::quiet(true)) {
                 Ok(_) => cprintln!(fg = Color::Green, "OK"),
                 Err(e) => {
                     cprintln!(fg = Color::Red, "FAILED");
                     failed += 1;
-                    cprintln!("Error:{e}");
+                    cprint!(fg = Color::Red, "Error: ");
+                    cprintln!("{e}");
                 }
             }
         } else {
-            cprint!("Running ");
-            cprint!(fg = Color::Cyan, "{}", script.original_path);
-            cprintln!(" ...");
-            cprintln!();
-            match script.script.run(&mut context) {
-                Ok(_) => {
-                    cprint!(fg = Color::Cyan, "{} ", script.original_path);
-                    cprintln!(fg = Color::Green, "PASSED");
-                }
-                Err(e) => {
-                    cprint!(fg = Color::Cyan, "{} ", script.original_path);
-                    cprintln!(fg = Color::Red, "FAILED");
-                    failed += 1;
-                    cprint!(fg = Color::Red, "Error: ");
-                    cprintln!("{}", e);
-                    cprintln!();
-                }
+            if script
+                .script
+                .run_with_args(args, ScriptOutput::default())
+                .is_err()
+            {
+                failed += 1;
             }
         }
     }

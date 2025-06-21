@@ -49,4 +49,3 @@ printf "[LOG] Hello, world!\n"
 ✅ OK
 
 <root>/escaping.cli PASSED
-1 test(s) passed

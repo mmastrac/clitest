@@ -69,4 +69,3 @@ printf "%%{}\n"
 ✅ OK
 
 <root>/basic_parse.cli PASSED
-1 test(s) passed

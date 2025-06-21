@@ -14,4 +14,3 @@ matching Sequence([Literal(bye), End])
 <root>/no_match.cli FAILED
 Error: pattern literal at line <root>/no_match.cli:4 does not match output line "hello"
 
-1/1 test(s) failed

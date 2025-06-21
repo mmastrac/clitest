@@ -19,4 +19,3 @@ background
 (cleanup) removing <tmp> && cd <root>
 
 <root>/background.cli PASSED
-1 test(s) passed

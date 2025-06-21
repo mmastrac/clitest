@@ -3,6 +3,7 @@ use std::{
     io::{BufRead, BufReader},
     process::{Command, ExitStatus, Stdio},
     thread,
+    time::Duration,
 };
 
 use serde::Serialize;
@@ -12,7 +13,7 @@ use termcolor::Color;
 use crate::{
     cwrite, cwriteln,
     output::Lines,
-    script::{ScriptKillReceiver, ScriptLocation},
+    script::{ScriptKillReceiver, ScriptKillSender, ScriptLocation},
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -39,9 +40,12 @@ impl CommandLine {
         writer: &mut dyn termcolor::WriteColor,
         show_line_numbers: bool,
         runner: Option<String>,
+        timeout: Duration,
         envs: &HashMap<String, String>,
         kill_receiver: &ScriptKillReceiver,
+        kill_sender: &ScriptKillSender,
     ) -> Result<(Lines, ExitStatus), std::io::Error> {
+        // This fails to exit if the command hangs....
         thread::scope(|s| {
             let mut command = if let Some(runner) = runner {
                 let bits = shellish_parse::parse(&runner, ParseOptions::default())
@@ -79,7 +83,6 @@ impl CommandLine {
                     format!("failed to spawn command {command:?}: {e}"),
                 )
             })?;
-
             let (tx, rx) = std::sync::mpsc::channel();
 
             // Spawn a thread for stdout and stderr and collect each line we read into a buffer
@@ -119,7 +122,8 @@ impl CommandLine {
 
             let mut line_number = 1;
             let mut output_lines = vec![];
-            while let Ok((is_stdout, line)) = rx.recv() {
+
+            while let Ok((is_stdout, line)) = rx.recv_timeout(timeout) {
                 if show_line_numbers {
                     cwrite!(
                         writer,
@@ -141,7 +145,10 @@ impl CommandLine {
             let join_start = std::time::Instant::now();
             let mut handles = vec![stdout, stderr];
             while !handles.is_empty() {
-                if join_start.elapsed() > std::time::Duration::from_secs(30) {
+                if join_start.elapsed() > timeout {
+                    cwriteln!(writer, fg = Color::Yellow, "Process took too long!");
+                    kill_sender.kill();
+
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::TimedOut,
                         "process took too long to join",

@@ -10,4 +10,3 @@ hello
 <root>/expect_mismatch.cli FAILED
 Error: expected failure, but passed
 
-1/1 test(s) failed

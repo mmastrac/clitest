@@ -1,7 +1,9 @@
+use std::time::Instant;
+
 use clitest_lib::{
     cprint, cprintln, cprintln_rule, cwriteln,
     parser::parse_script,
-    script::{ScriptFile, ScriptRunArgs, ScriptRunContext},
+    script::{ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext},
     term::Color,
     util::NicePathBuf,
 };
@@ -10,7 +12,6 @@ use clitest_integration::testing::{TestCase, load_test_scripts, root_dir, tests_
 
 pub fn run() {
     let root = root_dir();
-    eprintln!("root = {:?}", root);
     std::env::set_current_dir(&root)
         .expect(&format!("failed to set current directory to {root:?}"));
 
@@ -20,11 +21,15 @@ pub fn run() {
 
     let tests = load_test_scripts(std::env::args().nth(1).as_deref());
 
-    eprintln!(
-        "Running {} test(s) from {}",
-        tests.len(),
+    cprint!("Running ");
+    cprint!(fg = Color::Yellow, "{}", tests.len());
+    cprint!(" test(s) from ");
+    cprint!(
+        fg = Color::Cyan,
+        "<workspace>/{}/",
         NicePathBuf::from(tests_dir())
     );
+    cprintln!();
 
     let mut failed_tests = Vec::new();
 
@@ -39,44 +44,37 @@ pub fn run() {
         let args = ScriptRunArgs {
             quiet: true,
             no_color: true,
+            simplified_output: true,
             ..Default::default()
         };
-        let mut context = ScriptRunContext::new(args, &test.path);
-        cwriteln!(context.stream(), "Running {} ...", test.path);
-        cwriteln!(context.stream());
-        let res = script.run(&mut context);
-        if let Err(e) = &res {
-            cwriteln!(context.stream(), "{} FAILED", test.path);
-            cwriteln!(context.stream(), "Error: {}", e);
-            cwriteln!(context.stream());
-            cwriteln!(context.stream(), "1/1 test(s) failed");
-        } else {
-            cwriteln!(context.stream(), "{} PASSED", test.path);
-            cwriteln!(context.stream(), "1 test(s) passed");
-        }
+        let output = ScriptOutput::quiet(true);
+        let start = Instant::now();
+        let res = script.run_with_args(args, output.clone());
 
         if is_fail {
             if let Err(e) = res {
-                cprintln!(fg = Color::Green, "✅ OK ({})", e.short());
-                if !check_output(&test, context) {
+                cprint!(fg = Color::Green, "✅ OK ({})", e.short());
+                if !check_output(&test, output.take_buffer()) {
                     failed += 1;
                 }
             } else {
-                cprintln!(fg = Color::Red, "❌ FAIL (expected a failure)");
+                cprint!(fg = Color::Red, "❌ FAIL (expected a failure)");
                 failed += 1;
                 failed_tests.push(test);
             }
         } else if let Err(e) = res {
-            cprintln!(fg = Color::Red, "❌ FAIL");
+            cprint!(fg = Color::Red, "❌ FAIL");
             failed += 1;
-            cprintln!(fg = Color::Red, "{}", e);
+            cprint!(fg = Color::Red, "{}", e);
             failed_tests.push(test);
         } else {
-            cprintln!(fg = Color::Green, "✅ OK");
-            if !check_output(&test, context) {
+            cprint!(fg = Color::Green, "✅ OK");
+            if !check_output(&test, output.take_buffer()) {
                 failed += 1;
             }
         }
+        let duration = start.elapsed();
+        cprintln!(dimmed = true, " ({:.2}s)", duration.as_secs_f64());
     }
 
     for test in failed_tests {
@@ -91,8 +89,7 @@ pub fn run() {
             show_line_numbers: true,
             ..Default::default()
         };
-        let mut context = ScriptRunContext::new(args, &test.path);
-        _ = script.run(&mut context);
+        let _ = script.run_with_args(args, ScriptOutput::default());
         cprintln_rule!();
     }
 
@@ -160,9 +157,7 @@ fn munge_line(root: &str, tmp: &[&str], output: &mut String, line: &str) {
     #[cfg(windows)]
     let line = line.replace(" (signal: 1 (SIGHUP))", "");
 
-    if line.starts_with("───") {
-        output.push_str("---\n");
-    } else if line.contains("<ignore>") {
+    if line.contains("<ignore>") {
         output.push_str("<ignore>\n");
     } else {
         let line = line.replace(
@@ -204,8 +199,7 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
     }
 }
 
-fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
-    let output = context.take_output();
+fn check_output(test: &TestCase, output: String) -> bool {
     let root = &NicePathBuf::from(test.path.as_ref().parent().unwrap()).to_string();
     let b = munge_output(root, &output);
 

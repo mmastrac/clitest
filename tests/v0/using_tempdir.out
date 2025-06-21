@@ -31,4 +31,3 @@ cleaning up
 (cleanup) removing <tmp> && cd <root>
 
 <root>/using_tempdir.cli PASSED
-1 test(s) passed

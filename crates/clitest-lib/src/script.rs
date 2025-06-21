@@ -56,6 +56,7 @@ impl ScriptFile {
 #[derive(derive_more::Debug, Serialize)]
 pub struct Script {
     pub commands: Vec<ScriptBlock>,
+    pub file: ScriptFile,
     #[debug(skip)]
     #[serde(skip)]
     pub grok: Grok,
@@ -66,9 +67,11 @@ pub struct ScriptRunArgs {
     pub delay_steps: Option<u64>,
     pub ignore_exit_codes: bool,
     pub ignore_matches: bool,
+    pub simplified_output: bool,
     pub show_line_numbers: bool,
     pub runner: Option<String>,
     pub quiet: bool,
+    pub verbose: bool,
     pub timeout: Option<Duration>,
     pub no_color: bool,
 }
@@ -82,10 +85,14 @@ pub struct ScriptOutput {
 trait WriteColorAny: WriteColor + Send + Sync + std::any::Any + 'static + std::fmt::Debug {
     /// Workaround for lack of upcasting
     fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String>;
+    fn clone_buffer(&self) -> Result<termcolor::Buffer, String>;
 }
 
 impl WriteColorAny for termcolor::StandardStream {
     fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String> {
+        Err("not a buffer".to_string())
+    }
+    fn clone_buffer(&self) -> Result<termcolor::Buffer, String> {
         Err("not a buffer".to_string())
     }
 }
@@ -93,6 +100,9 @@ impl WriteColorAny for termcolor::StandardStream {
 impl WriteColorAny for termcolor::Buffer {
     fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String> {
         Ok(*self)
+    }
+    fn clone_buffer(&self) -> Result<termcolor::Buffer, String> {
+        Ok(self.clone())
     }
 }
 
@@ -116,8 +126,10 @@ impl ScriptOutput {
     }
 
     pub fn take_buffer(self) -> String {
-        let stream = SharedMut::try_unwrap(self.stream).unwrap();
-        let stream = stream.take_buffer().expect("wrong stream type");
+        let stream = match SharedMut::try_unwrap(self.stream) {
+            Ok(stream) => stream.take_buffer().expect("wrong stream type"),
+            Err(shared) => shared.read().clone_buffer().expect("wrong stream type"),
+        };
         String::from_utf8_lossy(&stream.into_inner()).to_string()
     }
 }
@@ -207,7 +219,11 @@ impl ScriptRunContext {
             background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
-            output: ScriptOutput::quiet(self.args.no_color),
+            output: if self.args.verbose {
+                self.output.clone()
+            } else {
+                ScriptOutput::quiet(self.args.no_color)
+            },
         }
     }
 
@@ -438,7 +454,7 @@ impl ScriptKillReceiver {
         let mut info = job.query_extended_limit_info().map_err(map_job_error)?;
         info.limit_kill_on_job_close();
         job.set_extended_limit_info(&info).map_err(map_job_error)?;
-        job.assign_process(output.as_raw_handle() as _);
+        job.assign_process(output.as_raw_handle() as _)?;
 
         // Resume the main thread for the process
         let id = output.id();
@@ -532,7 +548,7 @@ impl ScriptKillSender {
 }
 
 impl ScriptRunContext {
-    pub fn new(args: ScriptRunArgs, script_path: impl AsRef<Path>) -> Self {
+    pub fn new(args: ScriptRunArgs, script_path: impl AsRef<Path>, output: ScriptOutput) -> Self {
         let mut env_vars = HashMap::new();
 
         macro_rules! target {
@@ -566,14 +582,6 @@ impl ScriptRunContext {
         env_vars.insert("INITIAL_PWD".to_string(), env_vars["PWD"].clone());
 
         let kill = Arc::new(AtomicBool::new(false));
-
-        let output = if args.quiet {
-            ScriptOutput::quiet(args.no_color)
-        } else if args.no_color {
-            ScriptOutput::no_color()
-        } else {
-            ScriptOutput::default()
-        };
 
         Self {
             args,
@@ -758,6 +766,37 @@ impl Script {
         assert!(v.is_empty(), "script did not run to completion: {v:?}");
         Ok(())
     }
+
+    pub fn run_with_args(
+        &self,
+        args: ScriptRunArgs,
+        output: ScriptOutput,
+    ) -> Result<(), ScriptRunError> {
+        let script_path = &*self.file.file;
+        let mut context = ScriptRunContext::new(args, script_path, output);
+
+        // Write "Running..." message with colors
+        cwrite!(context.stream(), "Running ");
+        cwrite!(context.stream(), fg = Color::Cyan, "{}", script_path);
+        cwriteln!(context.stream(), " ...");
+        cwriteln!(context.stream());
+
+        let result = self.run(&mut context);
+
+        // Handle success and error output
+        if let Err(ref e) = result {
+            cwrite!(context.stream(), fg = Color::Cyan, "{} ", script_path);
+            cwriteln!(context.stream(), fg = Color::Red, "FAILED");
+            cwrite!(context.stream(), fg = Color::Red, "Error: ");
+            cwriteln!(context.stream(), "{}", e);
+            cwriteln!(context.stream());
+        } else {
+            cwrite!(context.stream(), fg = Color::Cyan, "{} ", script_path);
+            cwriteln!(context.stream(), fg = Color::Green, "PASSED");
+        }
+
+        result
+    }
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -892,19 +931,27 @@ impl ScriptBlock {
                             for line in result.command.command.split('\n') {
                                 cwriteln!(context.stream(), fg = Color::Green, "{}", line);
                             }
-                            cwriteln_rule!(
-                                context.stream(),
-                                fg = Color::Cyan,
-                                "{}",
-                                result.command.location
-                            );
+                            if context.args.simplified_output {
+                                cwriteln!(context.stream(), dimmed = true, "---");
+                            } else {
+                                cwriteln_rule!(
+                                    context.stream(),
+                                    fg = Color::Cyan,
+                                    "{}",
+                                    result.command.location
+                                );
+                            }
                             for line in &result.output {
                                 cwriteln!(context.stream(), "{}", line);
                             }
                             if result.output.is_empty() {
                                 cwriteln!(context.stream(), dimmed = true, "(no output)");
                             }
-                            cwriteln_rule!(context.stream());
+                            if context.args.simplified_output {
+                                cwriteln!(context.stream(), dimmed = true, "---");
+                            } else {
+                                cwriteln_rule!(context.stream());
+                            }
                             result.evaluate(context)?;
                         }
                     }
@@ -1265,8 +1312,6 @@ pub struct ScriptCommand {
 
 impl ScriptCommand {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<ScriptResult, ScriptRunError> {
-        use crate::{cwriteln_rule, term::Color};
-
         let command = &self.command;
         let args = &context.args;
 
@@ -1277,13 +1322,19 @@ impl ScriptCommand {
         for line in command.command.split('\n') {
             cwriteln!(context.stream(), fg = Color::Green, "{}", line);
         }
-        cwriteln_rule!(context.stream(), fg = Color::Cyan, "{}", command.location);
+        if args.simplified_output {
+            cwriteln!(context.stream(), dimmed = true, "---");
+        } else {
+            cwriteln_rule!(context.stream(), fg = Color::Cyan, "{}", command.location);
+        }
         let (output, status) = command.run(
             &mut context.stream(),
             context.args.show_line_numbers,
             context.args.runner.clone(),
+            context.args.timeout.unwrap_or(DEFAULT_TIMEOUT),
             &context.env_vars,
             &context.kill,
+            &context.kill_sender,
         )?;
 
         let exit_result = if !self.exit.matches(status) {
@@ -1322,7 +1373,12 @@ impl ScriptCommand {
         if output.is_empty() {
             cwriteln!(context.stream(), dimmed = true, "(no output)");
         }
-        cwriteln_rule!(context.stream());
+
+        if context.args.simplified_output {
+            cwriteln!(context.stream(), dimmed = true, "---");
+        } else {
+            cwriteln_rule!(context.stream());
+        }
 
         Ok(ScriptResult {
             command: command.clone(),
@@ -1345,14 +1401,21 @@ pub struct ScriptResult {
 impl ScriptResult {
     pub fn evaluate(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
         let args = &context.args;
-        let (success, failure, arrow) = if *crate::term::IS_UTF8 {
-            ("✅", "❌", "→")
+        let (success, failure, warning, arrow) = if *crate::term::IS_UTF8 {
+            ("✅", "❌", "⚠️", "→")
         } else {
-            ("[*]", "[X]", "->")
+            ("[*]", "[X]", "[!]", "->")
         };
 
         if let ExitResult::Mismatch(status) = self.exit {
-            if !args.ignore_exit_codes {
+            if args.ignore_exit_codes {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Yellow,
+                    "{warning} Ignored incorrect exit code: {status}"
+                );
+                cwriteln!(context.stream());
+            } else {
                 cwriteln!(
                     context.stream(),
                     fg = Color::Red,
@@ -1370,7 +1433,14 @@ impl ScriptResult {
         }
 
         if let PatternResult::Mismatch(e, trace) = &self.pattern {
-            if !args.ignore_matches {
+            if args.ignore_matches {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Yellow,
+                    "{warning} Ignored error: {e} (ignoring mismatches)"
+                );
+                cwriteln!(context.stream());
+            } else {
                 cwriteln!(context.stream(), fg = Color::Red, "ERROR: {e}");
                 cwriteln!(context.stream(), dimmed = true, "{trace}");
                 cwriteln!(context.stream(), fg = Color::Red, "{failure} FAIL");
@@ -1380,7 +1450,14 @@ impl ScriptResult {
         }
 
         if let PatternResult::ExpectedFailure = self.pattern {
-            if !args.ignore_matches {
+            if args.ignore_matches {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Yellow,
+                    "{warning} Should not have matched! (ignoring mismatches)"
+                );
+                cwriteln!(context.stream());
+            } else {
                 cwriteln!(
                     context.stream(),
                     fg = Color::Red,
@@ -1478,7 +1555,11 @@ $ cmd &
 
     #[test]
     fn test_script_run_context_expand() {
-        let mut context = ScriptRunContext::new(ScriptRunArgs::default(), &Path::new("."));
+        let mut context = ScriptRunContext::new(
+            ScriptRunArgs::default(),
+            &Path::new("."),
+            ScriptOutput::default(),
+        );
         context.set_env("A", "1");
         context.set_env("B", "2");
         context.set_env("C", "3");
