@@ -438,7 +438,7 @@ impl ScriptKillReceiver {
         let mut info = job.query_extended_limit_info().map_err(map_job_error)?;
         info.limit_kill_on_job_close();
         job.set_extended_limit_info(&info).map_err(map_job_error)?;
-        job.assign_process(output.as_raw_handle() as _);
+        job.assign_process(output.as_raw_handle() as _)?;
 
         // Resume the main thread for the process
         let id = output.id();

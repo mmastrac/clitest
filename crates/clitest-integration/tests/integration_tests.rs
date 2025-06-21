@@ -10,7 +10,6 @@ use clitest_integration::testing::{TestCase, load_test_scripts, root_dir, tests_
 
 pub fn run() {
     let root = root_dir();
-    eprintln!("root = {:?}", root);
     std::env::set_current_dir(&root)
         .expect(&format!("failed to set current directory to {root:?}"));
 
@@ -21,7 +20,7 @@ pub fn run() {
     let tests = load_test_scripts(std::env::args().nth(1).as_deref());
 
     eprintln!(
-        "Running {} test(s) from {}",
+        "Running {} test(s) from {}/",
         tests.len(),
         NicePathBuf::from(tests_dir())
     );
