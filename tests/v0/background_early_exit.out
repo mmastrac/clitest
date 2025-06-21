@@ -1,4 +1,4 @@
-Running tests/v0/background_early_exit.cli ...
+Running <root>/background_early_exit.cli ...
 
 sleep .1
 ---
@@ -12,5 +12,5 @@ hi
 ---
 ✅ OK
 
-tests/v0/background_early_exit.cli PASSED
+<root>/background_early_exit.cli PASSED
 1 test(s) passed

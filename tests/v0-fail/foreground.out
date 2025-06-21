@@ -1,4 +1,4 @@
-Running tests/v0-fail/foreground.cli ...
+Running <root>/foreground.cli ...
 
 exit 1
 ---
@@ -13,7 +13,7 @@ hi
 ---
 ✅ OK
 
-tests/v0-fail/foreground.cli FAILED
+<root>/foreground.cli FAILED
 Error: exit status: 1
 
 1/1 test(s) failed

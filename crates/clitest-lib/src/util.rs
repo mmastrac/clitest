@@ -68,6 +68,12 @@ impl From<&'_ Path> for NicePathBuf {
     }
 }
 
+impl AsRef<Path> for NicePathBuf {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
 impl NicePathBuf {
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {

@@ -533,7 +533,7 @@ impl ScriptKillSender {
 }
 
 impl ScriptRunContext {
-    pub fn new(args: ScriptRunArgs, script_path: &Path) -> Self {
+    pub fn new(args: ScriptRunArgs, script_path: impl AsRef<Path>) -> Self {
         let mut env_vars = HashMap::new();
 
         macro_rules! target {
@@ -561,7 +561,7 @@ impl ScriptRunContext {
         // Set the current working directory as a special variable "PWD"
         env_vars.insert(
             "PWD".to_string(),
-            NicePathBuf::from(script_path.parent().unwrap()).env_string(),
+            NicePathBuf::from(script_path.as_ref().parent().unwrap()).env_string(),
         );
         // Save the initial PWD as INITIAL_PWD so it can easily be restored
         env_vars.insert("INITIAL_PWD".to_string(), env_vars["PWD"].clone());

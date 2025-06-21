@@ -1,4 +1,4 @@
-Running tests/v0/basic_parse.cli ...
+Running <root>/basic_parse.cli ...
 
 printf "a\nb\nc\n\n"
 ---
@@ -68,5 +68,5 @@ printf "%%{}\n"
 ---
 ✅ OK
 
-tests/v0/basic_parse.cli PASSED
+<root>/basic_parse.cli PASSED
 1 test(s) passed

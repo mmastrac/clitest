@@ -1,4 +1,4 @@
-Running tests/v0-fail/background.cli ...
+Running <root>/background.cli ...
 
 printf "hi\n"
 ---
@@ -13,7 +13,7 @@ hi
 ❌ FAIL: exit status: 1
  → exit 1
 
-tests/v0-fail/background.cli FAILED
+<root>/background.cli FAILED
 Error: exit status: 1
 
 1/1 test(s) failed

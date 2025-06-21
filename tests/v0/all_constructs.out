@@ -1,4 +1,4 @@
-Running tests/v0/all_constructs.cli ...
+Running <root>/all_constructs.cli ...
 
 printf "a\nb\nc\n"
 ---
@@ -48,5 +48,5 @@ world
 ---
 ✅ OK
 
-tests/v0/all_constructs.cli PASSED
+<root>/all_constructs.cli PASSED
 1 test(s) passed

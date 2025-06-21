@@ -1,4 +1,4 @@
-Running tests/v0/set.cli ...
+Running <root>/set.cli ...
 
 set FOO bar
 
@@ -53,5 +53,5 @@ a\$b
 ---
 ✅ OK
 
-tests/v0/set.cli PASSED
+<root>/set.cli PASSED
 1 test(s) passed

@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use clitest_lib::{
     cprint, cprintln, cprintln_rule, cwriteln,
     parser::parse_script,
@@ -18,13 +16,12 @@ pub fn run() {
     let mut failed_tests = Vec::new();
 
     for test in tests {
-        let is_fail = test.path.to_str().unwrap().contains("-fail");
+        let is_fail = test.path.to_string().contains("-fail");
         cprint!("Running ");
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
 
-        let script =
-            parse_script(ScriptFile::new(test.relative_path.clone()), &test.content).unwrap();
+        let script = parse_script(ScriptFile::new(&test.path), &test.content).unwrap();
         total += 1;
         let args = ScriptRunArgs {
             quiet: true,
@@ -32,20 +29,16 @@ pub fn run() {
             ..Default::default()
         };
         let mut context = ScriptRunContext::new(args, &test.path);
-        cwriteln!(
-            context.stream(),
-            "Running {} ...",
-            test.relative_path.display()
-        );
+        cwriteln!(context.stream(), "Running {} ...", test.path);
         cwriteln!(context.stream());
         let res = script.run(&mut context);
         if let Err(e) = &res {
-            cwriteln!(context.stream(), "{} FAILED", test.relative_path.display());
+            cwriteln!(context.stream(), "{} FAILED", test.path);
             cwriteln!(context.stream(), "Error: {}", e);
             cwriteln!(context.stream());
             cwriteln!(context.stream(), "1/1 test(s) failed");
         } else {
-            cwriteln!(context.stream(), "{} PASSED", test.relative_path.display());
+            cwriteln!(context.stream(), "{} PASSED", test.path);
             cwriteln!(context.stream(), "1 test(s) passed");
         }
 
@@ -200,7 +193,7 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
 
 fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
     let output = context.take_output();
-    let root = test.path.parent().unwrap().to_str().unwrap();
+    let root = test.path.as_ref().parent().unwrap().to_str().unwrap();
     let b = munge_output(root, &output);
 
     if std::env::var("UPDATE_TESTS").is_ok() {
@@ -214,11 +207,7 @@ fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
         if a == b {
             return true;
         }
-        cprintln!(
-            fg = Color::Red,
-            "⚠️  Contents differ for {}!",
-            test.relative_path.display()
-        );
+        cprintln!(fg = Color::Red, "⚠️  Contents differ for {}!", test.path);
         cprintln_rule!();
         let comparison = pretty_assertions::StrComparison::new(&a, &b);
         cprintln!("{}", comparison);

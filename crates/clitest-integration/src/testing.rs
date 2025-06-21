@@ -1,12 +1,13 @@
 use std::path::{Path, PathBuf};
 
+use clitest_lib::util::NicePathBuf;
+
 pub struct TestCase {
     pub name: String,
     pub content: String,
     pub expected_output: Option<String>,
     pub expected_output_file: Option<PathBuf>,
-    pub path: PathBuf,
-    pub relative_path: PathBuf,
+    pub path: NicePathBuf,
 }
 
 pub fn tests_dir() -> PathBuf {
@@ -60,8 +61,7 @@ pub fn load_test_scripts(pattern: Option<&str>) -> Vec<TestCase> {
                 name: format!("{test_dir_name}/{test_name}"),
                 expected_output,
                 content: test_content,
-                path: test.path(),
-                relative_path: PathBuf::from(format!("tests/{test_dir_name}/{test_name}")),
+                path: NicePathBuf::from(test.path()),
                 expected_output_file: Some(output_file),
             });
         }

@@ -1,4 +1,4 @@
-Running tests/v0/using_tempdir.cli ...
+Running <root>/using_tempdir.cli ...
 
 using tempdir: <tmp>
 
@@ -30,5 +30,5 @@ cleaning up
 
 (cleanup) removing <tmp> && cd <root>
 
-tests/v0/using_tempdir.cli PASSED
+<root>/using_tempdir.cli PASSED
 1 test(s) passed
