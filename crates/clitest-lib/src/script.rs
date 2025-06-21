@@ -243,7 +243,7 @@ impl ScriptRunContext {
             .get("PWD")
             .cloned()
             .map(NicePathBuf::from)
-            .unwrap_or_else(|| NicePathBuf::cwd())
+            .unwrap_or_else(NicePathBuf::cwd)
     }
 
     pub fn get_env(&self, name: &str) -> Option<&str> {
@@ -1017,25 +1017,22 @@ impl ScriptBlock {
 
                 loop {
                     let mut nested_context = context.new_background();
-                    match Self::run_blocks(&mut nested_context, blocks) {
-                        Ok(results) => {
-                            let mut all_ok = true;
-                            for result in results {
-                                if !result.evaluate(&mut nested_context).is_ok() {
-                                    all_ok = false;
-                                    break;
-                                }
-                            }
-                            if all_ok {
-                                let output = nested_context.take_output();
-                                cwrite!(context.stream(), fg = Color::Green, "retry: ");
-                                cwriteln!(context.stream(), "success");
-                                cwriteln!(context.stream());
-                                cwriteln!(context.stream(), "{output}");
-                                return Ok(vec![]);
+                    if let Ok(results) = Self::run_blocks(&mut nested_context, blocks) {
+                        let mut all_ok = true;
+                        for result in results {
+                            if result.evaluate(&mut nested_context).is_err() {
+                                all_ok = false;
+                                break;
                             }
                         }
-                        Err(_) => {}
+                        if all_ok {
+                            let output = nested_context.take_output();
+                            cwrite!(context.stream(), fg = Color::Green, "retry: ");
+                            cwriteln!(context.stream(), "success");
+                            cwriteln!(context.stream());
+                            cwriteln!(context.stream(), "{output}");
+                            return Ok(vec![]);
+                        }
                     }
 
                     if start.elapsed() > context.args.timeout.unwrap_or(DEFAULT_TIMEOUT) {
@@ -1557,7 +1554,7 @@ $ cmd &
     fn test_script_run_context_expand() {
         let mut context = ScriptRunContext::new(
             ScriptRunArgs::default(),
-            &Path::new("."),
+            Path::new("."),
             ScriptOutput::default(),
         );
         context.set_env("A", "1");

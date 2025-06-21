@@ -1,9 +1,9 @@
 use std::time::Instant;
 
 use clitest_lib::{
-    cprint, cprintln, cprintln_rule, cwriteln,
+    cprint, cprintln, cprintln_rule,
     parser::parse_script,
-    script::{ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext},
+    script::{ScriptFile, ScriptOutput, ScriptRunArgs},
     term::Color,
     util::NicePathBuf,
 };
@@ -13,7 +13,7 @@ use clitest_integration::testing::{TestCase, load_test_scripts, root_dir, tests_
 pub fn run() {
     let root = root_dir();
     std::env::set_current_dir(&root)
-        .expect(&format!("failed to set current directory to {root:?}"));
+        .unwrap_or_else(|_| panic!("failed to set current directory to {root:?}"));
 
     let mut total = 0;
     let mut failed = 0;
@@ -183,10 +183,10 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
 
     // Replace /tmp or /tmp/<filename> with <tmp>
     let tmp_path = line.split_once(tmp).unwrap().1;
-    let tmp_path = if tmp_path.is_empty() || tmp_path.chars().nth(0).unwrap() != sep {
+    let tmp_path = if tmp_path.is_empty() || tmp_path.chars().next().unwrap() != sep {
         None
     } else {
-        tmp_path[1..].split(tmp_char).nth(0)
+        tmp_path[1..].split(tmp_char).next()
     };
 
     if let Some(tmp_path) = tmp_path {
