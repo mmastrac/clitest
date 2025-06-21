@@ -267,17 +267,16 @@ fn write_pretty_path(
         }
     }
 
-    // If the path is relative, we can try strip the cwd from its canonical version to eliminate any relative paths.
-    if path.is_relative() {
-        if let Some(cwd) = cwd {
-            if let Ok(path) = canon_path.strip_prefix(cwd) {
-                if debug {
-                    write_debug_path(f, &path)?;
-                } else {
-                    write!(f, "{}", path.display())?;
-                }
-                return Ok(());
+    // If the path is relative, we can try strip the cwd from its canonical
+    // version to eliminate any relative paths.
+    if let Some(cwd) = cwd {
+        if let Ok(path) = canon_path.strip_prefix(cwd) {
+            if debug {
+                write_debug_path(f, &path)?;
+            } else {
+                write!(f, "{}", path.display())?;
             }
+            return Ok(());
         }
     }
 

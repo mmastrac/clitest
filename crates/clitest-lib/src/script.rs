@@ -46,7 +46,6 @@ pub struct ScriptFile {
 }
 
 impl ScriptFile {
-    /// Normalizes/prettifies the path if we can.
     pub fn new(file: impl AsRef<Path>) -> Self {
         Self {
             file: Arc::new(NicePathBuf::new(file)),

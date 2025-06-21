@@ -10,15 +10,19 @@ pub struct TestCase {
     pub path: NicePathBuf,
 }
 
+pub fn root_dir() -> PathBuf {
+    dunce::canonicalize(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap(),
+    )
+    .expect("failed to canonicalize tests directory")
+}
+
 pub fn tests_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("tests")
-        .canonicalize()
-        .expect("failed to canonicalize tests directory")
+    dunce::canonicalize(root_dir().join("tests")).expect("failed to canonicalize tests directory")
 }
 
 pub fn load_test_scripts(pattern: Option<&str>) -> Vec<TestCase> {

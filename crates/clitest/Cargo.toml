@@ -8,6 +8,8 @@ description = "CLI-based testing."
 repository = "https://github.com/mmastrac/clitest"
 readme = "../../README.md"
 
+default-run = "clitest"
+
 [dependencies]
 clitest-lib = { path = "../clitest-lib" }
 clap = { version = "4.5", features = ["derive"] }

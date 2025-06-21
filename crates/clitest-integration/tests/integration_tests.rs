@@ -3,16 +3,29 @@ use clitest_lib::{
     parser::parse_script,
     script::{ScriptFile, ScriptRunArgs, ScriptRunContext},
     term::Color,
+    util::NicePathBuf,
 };
 
-use clitest_integration::testing::{TestCase, load_test_scripts};
+use clitest_integration::testing::{TestCase, load_test_scripts, root_dir, tests_dir};
 
 pub fn run() {
+    let root = root_dir();
+    eprintln!("root = {:?}", root);
+    std::env::set_current_dir(&root)
+        .expect(&format!("failed to set current directory to {root:?}"));
+
     let mut total = 0;
     let mut failed = 0;
     cprintln!();
 
     let tests = load_test_scripts(std::env::args().nth(1).as_deref());
+
+    eprintln!(
+        "Running {} test(s) from {}",
+        tests.len(),
+        NicePathBuf::from(tests_dir())
+    );
+
     let mut failed_tests = Vec::new();
 
     for test in tests {
@@ -193,7 +206,7 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
 
 fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
     let output = context.take_output();
-    let root = test.path.as_ref().parent().unwrap().to_str().unwrap();
+    let root = &NicePathBuf::from(test.path.as_ref().parent().unwrap()).to_string();
     let b = munge_output(root, &output);
 
     if std::env::var("UPDATE_TESTS").is_ok() {
