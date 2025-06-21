@@ -1,4 +1,5 @@
 Running <root>/any.cli ...
+
 printf "a\nb\nc\n"
 ---
 a

@@ -1,4 +1,5 @@
 Running <root>/background.cli ...
+
 using tempdir: <tmp>
 
 set TEMP_FILE background.log

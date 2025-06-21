@@ -1,4 +1,5 @@
 Running <root>/whitespace.cli ...
+
 printf "  X  \n"
 ---
   X  

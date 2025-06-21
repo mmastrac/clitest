@@ -764,6 +764,7 @@ impl Script {
         cwrite!(context.stream(), "Running ");
         cwrite!(context.stream(), fg = Color::Cyan, "{}", script_path);
         cwriteln!(context.stream(), " ...");
+        cwriteln!(context.stream());
 
         let result = self.run(&mut context);
 
@@ -1368,14 +1369,21 @@ pub struct ScriptResult {
 impl ScriptResult {
     pub fn evaluate(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
         let args = &context.args;
-        let (success, failure, arrow) = if *crate::term::IS_UTF8 {
-            ("✅", "❌", "→")
+        let (success, failure, warning, arrow) = if *crate::term::IS_UTF8 {
+            ("✅", "❌", "⚠️", "→")
         } else {
-            ("[*]", "[X]", "->")
+            ("[*]", "[X]", "[!]", "->")
         };
 
         if let ExitResult::Mismatch(status) = self.exit {
-            if !args.ignore_exit_codes {
+            if args.ignore_exit_codes {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Yellow,
+                    "{warning} Ignored incorrect exit code: {status}"
+                );
+                cwriteln!(context.stream());
+            } else {
                 cwriteln!(
                     context.stream(),
                     fg = Color::Red,
@@ -1393,7 +1401,14 @@ impl ScriptResult {
         }
 
         if let PatternResult::Mismatch(e, trace) = &self.pattern {
-            if !args.ignore_matches {
+            if args.ignore_matches {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Yellow,
+                    "{warning} Ignored error: {e} (ignoring mismatches)"
+                );
+                cwriteln!(context.stream());
+            } else {
                 cwriteln!(context.stream(), fg = Color::Red, "ERROR: {e}");
                 cwriteln!(context.stream(), dimmed = true, "{trace}");
                 cwriteln!(context.stream(), fg = Color::Red, "{failure} FAIL");
@@ -1403,7 +1418,14 @@ impl ScriptResult {
         }
 
         if let PatternResult::ExpectedFailure = self.pattern {
-            if !args.ignore_matches {
+            if args.ignore_matches {
+                cwriteln!(
+                    context.stream(),
+                    fg = Color::Yellow,
+                    "{warning} Should not have matched! (ignoring mismatches)"
+                );
+                cwriteln!(context.stream());
+            } else {
                 cwriteln!(
                     context.stream(),
                     fg = Color::Red,

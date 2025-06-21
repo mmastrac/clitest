@@ -1,4 +1,5 @@
 Running <root>/ignore.cli ...
+
 printf "IGNORED something\na\n"
 ---
 IGNORED something

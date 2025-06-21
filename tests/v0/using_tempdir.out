@@ -1,4 +1,5 @@
 Running <root>/using_tempdir.cli ...
+
 using tempdir: <tmp>
 
 using new dir: <tmp>/subdir

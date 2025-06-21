@@ -1,4 +1,5 @@
 Running <root>/background_early_exit.cli ...
+
 sleep .1
 ---
 (no output)

@@ -1,4 +1,5 @@
 Running <root>/for.cli ...
+
 printf "$x\n"
 ---
 1

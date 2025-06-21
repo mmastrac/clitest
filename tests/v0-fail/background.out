@@ -1,4 +1,5 @@
 Running <root>/background.cli ...
+
 printf "hi\n"
 ---
 hi
