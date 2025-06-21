@@ -6,7 +6,7 @@ use clitest_lib::script::ScriptOutput;
 use clitest_lib::*;
 
 use parser::parse_script;
-use script::{Script, ScriptFile, ScriptRunArgs, ScriptRunContext};
+use script::{Script, ScriptFile, ScriptRunArgs};
 #[derive(Parser, Debug, Clone, Copy, ValueEnum)]
 enum DumpFormat {
     Json,
@@ -156,14 +156,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cprintln!("{e}");
                 }
             }
-        } else {
-            if script
-                .script
-                .run_with_args(args, ScriptOutput::default())
-                .is_err()
-            {
-                failed += 1;
-            }
+        } else if script
+            .script
+            .run_with_args(args, ScriptOutput::default())
+            .is_err()
+        {
+            failed += 1;
         }
     }
 
