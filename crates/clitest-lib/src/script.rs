@@ -71,6 +71,7 @@ pub struct ScriptRunArgs {
     pub show_line_numbers: bool,
     pub runner: Option<String>,
     pub quiet: bool,
+    pub verbose: bool,
     pub timeout: Option<Duration>,
     pub no_color: bool,
 }
@@ -84,10 +85,14 @@ pub struct ScriptOutput {
 trait WriteColorAny: WriteColor + Send + Sync + std::any::Any + 'static + std::fmt::Debug {
     /// Workaround for lack of upcasting
     fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String>;
+    fn clone_buffer(&self) -> Result<termcolor::Buffer, String>;
 }
 
 impl WriteColorAny for termcolor::StandardStream {
     fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String> {
+        Err("not a buffer".to_string())
+    }
+    fn clone_buffer(&self) -> Result<termcolor::Buffer, String> {
         Err("not a buffer".to_string())
     }
 }
@@ -95,6 +100,9 @@ impl WriteColorAny for termcolor::StandardStream {
 impl WriteColorAny for termcolor::Buffer {
     fn take_buffer(self: Box<Self>) -> Result<termcolor::Buffer, String> {
         Ok(*self)
+    }
+    fn clone_buffer(&self) -> Result<termcolor::Buffer, String> {
+        Ok(self.clone())
     }
 }
 
@@ -118,8 +126,10 @@ impl ScriptOutput {
     }
 
     pub fn take_buffer(self) -> String {
-        let stream = SharedMut::try_unwrap(self.stream).unwrap();
-        let stream = stream.take_buffer().expect("wrong stream type");
+        let stream = match SharedMut::try_unwrap(self.stream) {
+            Ok(stream) => stream.take_buffer().expect("wrong stream type"),
+            Err(shared) => shared.read().clone_buffer().expect("wrong stream type"),
+        };
         String::from_utf8_lossy(&stream.into_inner()).to_string()
     }
 }
@@ -209,7 +219,11 @@ impl ScriptRunContext {
             background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
-            output: ScriptOutput::quiet(self.args.no_color),
+            output: if self.args.verbose {
+                self.output.clone()
+            } else {
+                ScriptOutput::quiet(self.args.no_color)
+            },
         }
     }
 
@@ -1317,8 +1331,10 @@ impl ScriptCommand {
             &mut context.stream(),
             context.args.show_line_numbers,
             context.args.runner.clone(),
+            context.args.timeout.unwrap_or(DEFAULT_TIMEOUT),
             &context.env_vars,
             &context.kill,
+            &context.kill_sender,
         )?;
 
         let exit_result = if !self.exit.matches(status) {

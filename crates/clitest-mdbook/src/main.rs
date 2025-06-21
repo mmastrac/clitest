@@ -67,7 +67,7 @@ impl Preprocessor for ClitestPreprocessor {
                                 timeout: Some(Duration::from_secs(5)),
                                 ..Default::default()
                             };
-                            let mut context = ScriptRunContext::new(args, script_path.as_path(), ScriptOutput::default());
+                            let mut context = ScriptRunContext::new(args, script_path.as_path(), ScriptOutput::quiet(true));
                             context.set_env("PATH".to_string(), "/usr/bin:/bin".to_string());
                             eprintln!("running script at {script_path:?}:{session_start}...");
                             match script.run(&mut context) {

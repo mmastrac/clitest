@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use termcolor::Color;
 
 use clitest_lib::script::ScriptOutput;
@@ -34,8 +34,16 @@ struct Args {
     ignore_matches: bool,
 
     /// Quiet.
-    #[arg(long)]
+    #[arg(long, short)]
     quiet: bool,
+
+    /// Verbose output
+    #[arg(long, short)]
+    verbose: bool,
+
+    /// Command timeout in seconds.
+    #[arg(long)]
+    timeout: Option<f32>,
 
     /// Show line numbers in command output.
     #[arg(long)]
@@ -131,7 +139,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             show_line_numbers: args.show_line_numbers,
             quiet: args.quiet,
             no_color: false,
-            timeout: None,
+            verbose: args.verbose,
+            timeout: args.timeout.map(Duration::from_secs_f32),
             simplified_output: false,
         };
 
