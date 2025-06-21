@@ -1,5 +1,4 @@
 Running <root>/any.cli ...
-
 printf "a\nb\nc\n"
 ---
 a
@@ -72,4 +71,3 @@ end
 ✅ OK
 
 <root>/any.cli PASSED
-1 test(s) passed

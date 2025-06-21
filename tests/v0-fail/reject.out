@@ -1,5 +1,4 @@
 Running <root>/reject.cli ...
-
 printf "hello\n"
 ---
 hello
@@ -17,4 +16,3 @@ matching Any(End)
 <root>/reject.cli FAILED
 Error: pattern reject at line <root>/reject.cli:5 does not match output line "<eof>"
 
-1/1 test(s) failed

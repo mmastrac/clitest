@@ -1,5 +1,4 @@
 Running <root>/background.cli ...
-
 using tempdir: <tmp>
 
 set TEMP_FILE background.log
@@ -19,4 +18,3 @@ background
 (cleanup) removing <tmp> && cd <root>
 
 <root>/background.cli PASSED
-1 test(s) passed

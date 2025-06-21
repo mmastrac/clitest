@@ -56,6 +56,7 @@ impl ScriptFile {
 #[derive(derive_more::Debug, Serialize)]
 pub struct Script {
     pub commands: Vec<ScriptBlock>,
+    pub file: ScriptFile,
     #[debug(skip)]
     #[serde(skip)]
     pub grok: Grok,
@@ -532,7 +533,7 @@ impl ScriptKillSender {
 }
 
 impl ScriptRunContext {
-    pub fn new(args: ScriptRunArgs, script_path: impl AsRef<Path>) -> Self {
+    pub fn new(args: ScriptRunArgs, script_path: impl AsRef<Path>, output: ScriptOutput) -> Self {
         let mut env_vars = HashMap::new();
 
         macro_rules! target {
@@ -566,14 +567,6 @@ impl ScriptRunContext {
         env_vars.insert("INITIAL_PWD".to_string(), env_vars["PWD"].clone());
 
         let kill = Arc::new(AtomicBool::new(false));
-
-        let output = if args.quiet {
-            ScriptOutput::quiet(args.no_color)
-        } else if args.no_color {
-            ScriptOutput::no_color()
-        } else {
-            ScriptOutput::default()
-        };
 
         Self {
             args,
@@ -757,6 +750,36 @@ impl Script {
         let v = ScriptBlock::run_blocks(context, &self.commands)?;
         assert!(v.is_empty(), "script did not run to completion: {v:?}");
         Ok(())
+    }
+
+    pub fn run_with_args(
+        &self,
+        args: ScriptRunArgs,
+        output: ScriptOutput,
+    ) -> Result<(), ScriptRunError> {
+        let script_path = &*self.file.file;
+        let mut context = ScriptRunContext::new(args, script_path, output);
+
+        // Write "Running..." message with colors
+        cwrite!(context.stream(), "Running ");
+        cwrite!(context.stream(), fg = Color::Cyan, "{}", script_path);
+        cwriteln!(context.stream(), " ...");
+
+        let result = self.run(&mut context);
+
+        // Handle success and error output
+        if let Err(ref e) = result {
+            cwrite!(context.stream(), fg = Color::Cyan, "{} ", script_path);
+            cwriteln!(context.stream(), fg = Color::Red, "FAILED");
+            cwrite!(context.stream(), fg = Color::Red, "Error: ");
+            cwriteln!(context.stream(), "{}", e);
+            cwriteln!(context.stream());
+        } else {
+            cwrite!(context.stream(), fg = Color::Cyan, "{} ", script_path);
+            cwriteln!(context.stream(), fg = Color::Green, "PASSED");
+        }
+
+        result
     }
 }
 
@@ -1478,7 +1501,11 @@ $ cmd &
 
     #[test]
     fn test_script_run_context_expand() {
-        let mut context = ScriptRunContext::new(ScriptRunArgs::default(), &Path::new("."));
+        let mut context = ScriptRunContext::new(
+            ScriptRunArgs::default(),
+            &Path::new("."),
+            ScriptOutput::default(),
+        );
         context.set_env("A", "1");
         context.set_env("B", "2");
         context.set_env("C", "3");

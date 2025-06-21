@@ -1,6 +1,6 @@
 use clap::{Arg, ArgMatches, Command};
 use clitest_lib::parser;
-use clitest_lib::script::{ScriptFile, ScriptRunArgs, ScriptRunContext};
+use clitest_lib::script::{ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext};
 use mdbook::book::Book;
 use mdbook::errors::Error;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
@@ -67,7 +67,7 @@ impl Preprocessor for ClitestPreprocessor {
                                 timeout: Some(Duration::from_secs(5)),
                                 ..Default::default()
                             };
-                            let mut context = ScriptRunContext::new(args, script_path.as_path());
+                            let mut context = ScriptRunContext::new(args, script_path.as_path(), ScriptOutput::default());
                             context.set_env("PATH".to_string(), "/usr/bin:/bin".to_string());
                             eprintln!("running script at {script_path:?}:{session_start}...");
                             match script.run(&mut context) {

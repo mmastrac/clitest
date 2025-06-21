@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use termcolor::Color;
 
+use clitest_lib::script::ScriptOutput;
 use clitest_lib::*;
 
 use parser::parse_script;
@@ -133,36 +134,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             timeout: None,
         };
 
-        let mut context = ScriptRunContext::new(args, &script.canonical_path);
-
-        if context.args.quiet {
+        if args.quiet {
+            cprint!("Running ");
             cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
-            match script.script.run(&mut context) {
+            match script.script.run_with_args(args, ScriptOutput::quiet(true)) {
                 Ok(_) => cprintln!(fg = Color::Green, "OK"),
                 Err(e) => {
                     cprintln!(fg = Color::Red, "FAILED");
                     failed += 1;
-                    cprintln!("Error:{e}");
+                    cprint!(fg = Color::Red, "Error: ");
+                    cprintln!("{e}");
                 }
             }
         } else {
-            cprint!("Running ");
-            cprint!(fg = Color::Cyan, "{}", script.original_path);
-            cprintln!(" ...");
-            cprintln!();
-            match script.script.run(&mut context) {
-                Ok(_) => {
-                    cprint!(fg = Color::Cyan, "{} ", script.original_path);
-                    cprintln!(fg = Color::Green, "PASSED");
-                }
-                Err(e) => {
-                    cprint!(fg = Color::Cyan, "{} ", script.original_path);
-                    cprintln!(fg = Color::Red, "FAILED");
-                    failed += 1;
-                    cprint!(fg = Color::Red, "Error: ");
-                    cprintln!("{}", e);
-                    cprintln!();
-                }
+            if script
+                .script
+                .run_with_args(args, ScriptOutput::default())
+                .is_err()
+            {
+                failed += 1;
             }
         }
     }

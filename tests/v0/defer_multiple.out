@@ -1,5 +1,4 @@
 Running <root>/defer_multiple.cli ...
-
 (deferred) echo 2a
 ---
 2a
@@ -25,4 +24,3 @@ Running <root>/defer_multiple.cli ...
 ✅ OK
 
 <root>/defer_multiple.cli PASSED
-1 test(s) passed

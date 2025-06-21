@@ -1,5 +1,4 @@
 Running <root>/ignore.cli ...
-
 printf "IGNORED something\na\n"
 ---
 IGNORED something
@@ -37,4 +36,3 @@ c
 ✅ OK
 
 <root>/ignore.cli PASSED
-1 test(s) passed

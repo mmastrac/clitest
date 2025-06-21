@@ -1,5 +1,4 @@
 Running <root>/using_tempdir.cli ...
-
 using tempdir: <tmp>
 
 using new dir: <tmp>/subdir
@@ -31,4 +30,3 @@ cleaning up
 (cleanup) removing <tmp> && cd <root>
 
 <root>/using_tempdir.cli PASSED
-1 test(s) passed

@@ -1,5 +1,4 @@
 Running <root>/all_constructs.cli ...
-
 printf "a\nb\nc\n"
 ---
 a
@@ -49,4 +48,3 @@ world
 ✅ OK
 
 <root>/all_constructs.cli PASSED
-1 test(s) passed

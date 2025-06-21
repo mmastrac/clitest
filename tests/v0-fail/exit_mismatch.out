@@ -1,5 +1,4 @@
 Running <root>/exit_mismatch.cli ...
-
 exit 1
 ---
 (no output)
@@ -10,4 +9,3 @@ exit 1
 <root>/exit_mismatch.cli FAILED
 Error: exit status: 1
 
-1/1 test(s) failed

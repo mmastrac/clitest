@@ -1,5 +1,4 @@
 Running <root>/defer.cli ...
-
 mktemp -d
 ---
 <tmp>
@@ -13,4 +12,3 @@ mktemp -d
 ✅ OK
 
 <root>/defer.cli PASSED
-1 test(s) passed

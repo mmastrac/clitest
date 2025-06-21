@@ -1,5 +1,4 @@
 Running <root>/escaping.cli ...
-
 printf "[LOG] Hello, world!\n"
 ---
 [LOG] Hello, world!
@@ -49,4 +48,3 @@ printf "[LOG] Hello, world!\n"
 ✅ OK
 
 <root>/escaping.cli PASSED
-1 test(s) passed

@@ -1,5 +1,4 @@
 Running <root>/foreground.cli ...
-
 exit 1
 ---
 (no output)
@@ -16,4 +15,3 @@ hi
 <root>/foreground.cli FAILED
 Error: exit status: 1
 
-1/1 test(s) failed

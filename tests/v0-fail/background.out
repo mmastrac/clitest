@@ -1,5 +1,4 @@
 Running <root>/background.cli ...
-
 printf "hi\n"
 ---
 hi
@@ -16,4 +15,3 @@ hi
 <root>/background.cli FAILED
 Error: exit status: 1
 
-1/1 test(s) failed

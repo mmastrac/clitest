@@ -1,7 +1,7 @@
 use clitest_lib::{
     cprint, cprintln, cprintln_rule, cwriteln,
     parser::parse_script,
-    script::{ScriptFile, ScriptRunArgs, ScriptRunContext},
+    script::{ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext},
     term::Color,
     util::NicePathBuf,
 };
@@ -40,24 +40,13 @@ pub fn run() {
             no_color: true,
             ..Default::default()
         };
-        let mut context = ScriptRunContext::new(args, &test.path);
-        cwriteln!(context.stream(), "Running {} ...", test.path);
-        cwriteln!(context.stream());
-        let res = script.run(&mut context);
-        if let Err(e) = &res {
-            cwriteln!(context.stream(), "{} FAILED", test.path);
-            cwriteln!(context.stream(), "Error: {}", e);
-            cwriteln!(context.stream());
-            cwriteln!(context.stream(), "1/1 test(s) failed");
-        } else {
-            cwriteln!(context.stream(), "{} PASSED", test.path);
-            cwriteln!(context.stream(), "1 test(s) passed");
-        }
+        let output = ScriptOutput::quiet(true);
+        let res = script.run_with_args(args, output.clone());
 
         if is_fail {
             if let Err(e) = res {
                 cprintln!(fg = Color::Green, "✅ OK ({})", e.short());
-                if !check_output(&test, context) {
+                if !check_output(&test, output.take_buffer()) {
                     failed += 1;
                 }
             } else {
@@ -72,7 +61,7 @@ pub fn run() {
             failed_tests.push(test);
         } else {
             cprintln!(fg = Color::Green, "✅ OK");
-            if !check_output(&test, context) {
+            if !check_output(&test, output.take_buffer()) {
                 failed += 1;
             }
         }
@@ -90,8 +79,7 @@ pub fn run() {
             show_line_numbers: true,
             ..Default::default()
         };
-        let mut context = ScriptRunContext::new(args, &test.path);
-        _ = script.run(&mut context);
+        let _ = script.run_with_args(args, ScriptOutput::default());
         cprintln_rule!();
     }
 
@@ -203,8 +191,7 @@ fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
     }
 }
 
-fn check_output(test: &TestCase, context: ScriptRunContext) -> bool {
-    let output = context.take_output();
+fn check_output(test: &TestCase, output: String) -> bool {
     let root = &NicePathBuf::from(test.path.as_ref().parent().unwrap()).to_string();
     let b = munge_output(root, &output);
 

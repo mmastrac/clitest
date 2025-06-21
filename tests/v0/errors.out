@@ -1,5 +1,4 @@
 Running <root>/errors.cli ...
-
 exit 1
 ---
 (no output)
@@ -25,4 +24,3 @@ a
 ✅ OK
 
 <root>/errors.cli PASSED
-1 test(s) passed

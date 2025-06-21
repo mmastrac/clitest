@@ -1,5 +1,4 @@
 Running <root>/pwd.cli ...
-
 using tempdir: <tmp>
 
 set TEMP_DIR <tmp>
@@ -35,4 +34,3 @@ file
 (cleanup) removing <tmp> && cd <root>
 
 <root>/pwd.cli PASSED
-1 test(s) passed

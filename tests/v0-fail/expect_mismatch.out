@@ -1,5 +1,4 @@
 Running <root>/expect_mismatch.cli ...
-
 printf "hello\n"
 ---
 hello
@@ -10,4 +9,3 @@ hello
 <root>/expect_mismatch.cli FAILED
 Error: expected failure, but passed
 
-1/1 test(s) failed
