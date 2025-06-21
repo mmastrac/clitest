@@ -5,10 +5,10 @@ edition = "2024"
 publish = false
 
 [dependencies]
-clitest-lib = { path = "../clitest-lib" }
-pretty_assertions = "1"
-termcolor = "1"
-dunce = "1.0.3"
+clitest-lib.workspace = true
+pretty_assertions.workspace = true
+termcolor.workspace = true
+dunce.workspace = true
 
 [[test]]
 name = "integration_tests"

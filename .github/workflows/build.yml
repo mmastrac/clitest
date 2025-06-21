@@ -8,6 +8,9 @@ on:
     branches:
       - master
 
+env:
+  CACHE_KEY: 1
+
 jobs:
   build:
     strategy:
@@ -16,6 +19,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dsherret/rust-toolchain-file@v1
+      - name: Cache Rust files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ env.CACHE_KEY }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ env.CACHE_KEY }}-
       - name: Run tests
         run: cargo test
