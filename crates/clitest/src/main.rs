@@ -132,6 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             quiet: args.quiet,
             no_color: false,
             timeout: None,
+            simplified_output: false,
         };
 
         if args.quiet {

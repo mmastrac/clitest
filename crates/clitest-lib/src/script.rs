@@ -67,6 +67,7 @@ pub struct ScriptRunArgs {
     pub delay_steps: Option<u64>,
     pub ignore_exit_codes: bool,
     pub ignore_matches: bool,
+    pub simplified_output: bool,
     pub show_line_numbers: bool,
     pub runner: Option<String>,
     pub quiet: bool,
@@ -916,19 +917,27 @@ impl ScriptBlock {
                             for line in result.command.command.split('\n') {
                                 cwriteln!(context.stream(), fg = Color::Green, "{}", line);
                             }
-                            cwriteln_rule!(
-                                context.stream(),
-                                fg = Color::Cyan,
-                                "{}",
-                                result.command.location
-                            );
+                            if context.args.simplified_output {
+                                cwriteln!(context.stream(), dimmed = true, "---");
+                            } else {
+                                cwriteln_rule!(
+                                    context.stream(),
+                                    fg = Color::Cyan,
+                                    "{}",
+                                    result.command.location
+                                );
+                            }
                             for line in &result.output {
                                 cwriteln!(context.stream(), "{}", line);
                             }
                             if result.output.is_empty() {
                                 cwriteln!(context.stream(), dimmed = true, "(no output)");
                             }
-                            cwriteln_rule!(context.stream());
+                            if context.args.simplified_output {
+                                cwriteln!(context.stream(), dimmed = true, "---");
+                            } else {
+                                cwriteln_rule!(context.stream());
+                            }
                             result.evaluate(context)?;
                         }
                     }
@@ -1289,8 +1298,6 @@ pub struct ScriptCommand {
 
 impl ScriptCommand {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<ScriptResult, ScriptRunError> {
-        use crate::{cwriteln_rule, term::Color};
-
         let command = &self.command;
         let args = &context.args;
 
@@ -1301,7 +1308,11 @@ impl ScriptCommand {
         for line in command.command.split('\n') {
             cwriteln!(context.stream(), fg = Color::Green, "{}", line);
         }
-        cwriteln_rule!(context.stream(), fg = Color::Cyan, "{}", command.location);
+        if args.simplified_output {
+            cwriteln!(context.stream(), dimmed = true, "---");
+        } else {
+            cwriteln_rule!(context.stream(), fg = Color::Cyan, "{}", command.location);
+        }
         let (output, status) = command.run(
             &mut context.stream(),
             context.args.show_line_numbers,
@@ -1346,7 +1357,12 @@ impl ScriptCommand {
         if output.is_empty() {
             cwriteln!(context.stream(), dimmed = true, "(no output)");
         }
-        cwriteln_rule!(context.stream());
+
+        if context.args.simplified_output {
+            cwriteln!(context.stream(), dimmed = true, "---");
+        } else {
+            cwriteln_rule!(context.stream());
+        }
 
         Ok(ScriptResult {
             command: command.clone(),
