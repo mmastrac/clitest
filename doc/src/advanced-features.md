@@ -79,6 +79,15 @@ $ echo 1
 ! 1
 ```
 
+### Timeouts
+
+Set a timeout for a command:
+
+```bash session
+$ sleep 60
+%TIMEOUT 100ms
+```
+
 ## Error Handling
 
 ### Expected Failures

@@ -64,7 +64,7 @@ impl Preprocessor for ClitestPreprocessor {
                         Ok(script) => {
                             let args = ScriptRunArgs {
                                 quiet: true,
-                                timeout: Some(Duration::from_secs(5)),
+                                global_timeout: Some(Duration::from_secs(5)),
                                 ..Default::default()
                             };
                             let mut context = ScriptRunContext::new(args, script_path.as_path(), ScriptOutput::quiet(true));

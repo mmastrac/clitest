@@ -1,0 +1,8 @@
+Running tests/v0-fail/timeout.cli ...
+
+sleep 60
+---
+Process took too long!
+tests/v0-fail/timeout.cli FAILED
+Error: process took too long to join
+

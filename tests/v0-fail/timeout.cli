@@ -1,0 +1,4 @@
+#!/usr/bin/env clitest --v0
+
+$ sleep 60
+%TIMEOUT 100ms

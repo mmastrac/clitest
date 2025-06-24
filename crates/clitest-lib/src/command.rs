@@ -3,7 +3,7 @@ use std::{
     io::{BufRead, BufReader},
     process::{Command, ExitStatus, Stdio},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde::Serialize;
@@ -45,6 +45,10 @@ impl CommandLine {
         kill_receiver: &ScriptKillReceiver,
         kill_sender: &ScriptKillSender,
     ) -> Result<(Lines, ExitStatus), std::io::Error> {
+        let start = Instant::now();
+        let warn_time = timeout.saturating_mul(90) / 100;
+        let timeout = timeout.saturating_mul(110) / 100;
+
         // This fails to exit if the command hangs....
         thread::scope(|s| {
             let mut command = if let Some(runner) = runner {
@@ -118,7 +122,7 @@ impl CommandLine {
                 }
             });
 
-            let runner = s.spawn(move || kill_receiver.run_cmd(output));
+            let runner = s.spawn(move || kill_receiver.run_cmd(output, warn_time));
 
             let mut line_number = 1;
             let mut output_lines = vec![];
@@ -142,10 +146,9 @@ impl CommandLine {
                 line_number += 1;
             }
 
-            let join_start = std::time::Instant::now();
             let mut handles = vec![stdout, stderr];
             while !handles.is_empty() {
-                if join_start.elapsed() > timeout {
+                if start.elapsed() > timeout {
                     cwriteln!(writer, fg = Color::Yellow, "Process took too long!");
                     kill_sender.kill();
 

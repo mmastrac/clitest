@@ -72,7 +72,7 @@ pub struct ScriptRunArgs {
     pub runner: Option<String>,
     pub quiet: bool,
     pub verbose: bool,
-    pub timeout: Option<Duration>,
+    pub global_timeout: Option<Duration>,
     pub no_color: bool,
 }
 
@@ -187,6 +187,7 @@ enum ScriptMode {
 #[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
+    timeout: Duration,
     env_vars: HashMap<String, String>,
     background: ScriptMode,
     #[debug(skip)]
@@ -201,6 +202,7 @@ impl Default for ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: ScriptRunArgs::default(),
+            timeout: DEFAULT_TIMEOUT,
             env_vars: HashMap::new(),
             background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
@@ -215,6 +217,8 @@ impl ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: self.args.clone(),
+            // Background processes are not subject to timeouts
+            timeout: Duration::MAX,
             env_vars: self.env_vars.clone(),
             background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
@@ -230,6 +234,7 @@ impl ScriptRunContext {
     pub fn new_deferred(&self) -> Self {
         Self {
             args: self.args.clone(),
+            timeout: self.timeout,
             env_vars: self.env_vars.clone(),
             background: ScriptMode::Deferred,
             kill: self.kill.clone(),
@@ -433,7 +438,11 @@ impl ScriptKillReceiver {
     }
 
     #[cfg(windows)]
-    pub fn run_cmd(&self, output: std::process::Child) -> std::io::Result<ExitStatus> {
+    pub fn run_cmd(
+        &self,
+        output: std::process::Child,
+        warn_time: Duration,
+    ) -> std::io::Result<ExitStatus> {
         use std::os::windows::io::AsRawHandle;
         use win32job::Job;
 
@@ -487,7 +496,7 @@ impl ScriptKillReceiver {
                     if let Some(status) = res {
                         return Ok::<_, std::io::Error>(status);
                     }
-                    if start.elapsed() > std::time::Duration::from_secs(10) {
+                    if start.elapsed() > warn_time {
                         if !warned {
                             let child = output.lock().unwrap().id();
                             eprintln!("Process #{child} taking too long to finish.");
@@ -501,7 +510,11 @@ impl ScriptKillReceiver {
     }
 
     #[cfg(unix)]
-    pub fn run_cmd(&self, output: std::process::Child) -> std::io::Result<ExitStatus> {
+    pub fn run_cmd(
+        &self,
+        output: std::process::Child,
+        warn_time: Duration,
+    ) -> std::io::Result<ExitStatus> {
         let output = Mutex::new(output);
         self.run_with(
             || {
@@ -519,7 +532,7 @@ impl ScriptKillReceiver {
                     if let Some(status) = res {
                         return Ok::<_, std::io::Error>(status);
                     }
-                    if start.elapsed() > std::time::Duration::from_secs(10) && !warned {
+                    if start.elapsed() > warn_time && !warned {
                         let child = output.lock().unwrap().id();
                         eprintln!("Process #{child} taking too long to finish.");
                         warned = true;
@@ -584,6 +597,7 @@ impl ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
 
         Self {
+            timeout: args.global_timeout.unwrap_or(DEFAULT_TIMEOUT),
             args,
             env_vars,
             background: ScriptMode::Normal,
@@ -696,6 +710,8 @@ pub enum ScriptErrorType {
     InvalidPatternDefinition,
     #[error("invalid pattern")]
     InvalidPattern,
+    #[error("invalid meta command")]
+    InvalidMetaCommand,
     #[error("invalid pattern at global level (only reject or ignore allowed here)")]
     InvalidGlobalPattern,
     #[error("invalid block type")]
@@ -916,7 +932,7 @@ impl ScriptBlock {
                         let start = std::time::Instant::now();
                         let mut warned = false;
 
-                        let timeout = context.args.timeout.unwrap_or(DEFAULT_TIMEOUT);
+                        let timeout = context.timeout;
                         let warn_at = timeout * 8 / 10;
 
                         let results = loop {
@@ -1050,7 +1066,7 @@ impl ScriptBlock {
                         }
                     }
 
-                    if start.elapsed() > context.args.timeout.unwrap_or(DEFAULT_TIMEOUT) {
+                    if start.elapsed() > context.timeout {
                         let output = nested_context.take_output();
                         cwrite!(context.stream(), fg = Color::Green, "retry: ");
                         cwriteln!(context.stream(), fg = Color::Red, "timed out");
@@ -1327,6 +1343,8 @@ pub struct ScriptCommand {
     pub expect_failure: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub set_var: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<Duration>,
 }
 
 impl ScriptCommand {
@@ -1351,7 +1369,7 @@ impl ScriptCommand {
             &mut context.stream(),
             context.args.show_line_numbers,
             context.args.runner.clone(),
-            context.args.timeout.unwrap_or(DEFAULT_TIMEOUT),
+            self.timeout.unwrap_or(context.timeout),
             &context.env_vars,
             &context.kill,
             &context.kill_sender,

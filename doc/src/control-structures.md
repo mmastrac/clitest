@@ -94,3 +94,13 @@ retry {
     $ true
 }
 ``` 
+
+`retry` uses the global timeout for the test, but you can set a timeout for the
+command itself with `%TIMEOUT`:
+
+```bash session
+retry {
+    $ true
+    %TIMEOUT 100ms
+}
+```

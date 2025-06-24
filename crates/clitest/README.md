@@ -63,6 +63,8 @@ The test files use the following syntax:
   and controls the current working directory)
 - `%EXIT <n|any>` - Expect exit with the given exit code (or any if `any` is used)
 - `%EXPECT_FAILURE` - Expect the pattern match to fail (and fail the test if it succeeds)
+- `%TIMEOUT <duration>` - Set the timeout for the command (default is `30s`,
+  suffixes `s`, `ms`, `us`, etc are supported)
 
 ## Examples
 

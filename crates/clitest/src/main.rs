@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             quiet: args.quiet,
             no_color: false,
             verbose: args.verbose,
-            timeout: args.timeout.map(Duration::from_secs_f32),
+            global_timeout: args.timeout.map(Duration::from_secs_f32),
             simplified_output: false,
         };
 

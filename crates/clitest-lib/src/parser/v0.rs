@@ -705,6 +705,7 @@ fn parse_normalized_script_v0_commands(
                 location: location.clone(),
             },
             exit: CommandExit::Success,
+            timeout: None,
             expect_failure: false,
             set_var: None,
         };
@@ -736,6 +737,21 @@ fn parse_normalized_script_v0_commands(
                                 line.location.clone(),
                             ));
                         }
+                    } else if line.starts_with("%TIMEOUT ") {
+                        if let Ok(timeout) = humantime::parse_duration(&line.text()[9..]) {
+                            command.timeout = Some(timeout);
+                        } else {
+                            return Err(ScriptError::new(
+                                ScriptErrorType::InvalidMetaCommand,
+                                line.location.clone(),
+                            ));
+                        }
+                    } else {
+                        return Err(ScriptError::new_with_data(
+                            ScriptErrorType::InvalidMetaCommand,
+                            line.location.clone(),
+                            format!("{line:?}"),
+                        ));
                     }
                 }
             }
