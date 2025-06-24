@@ -95,7 +95,7 @@ impl Preprocessor for ClitestPreprocessor {
         Ok(book)
     }
 
-    fn supports_renderer(&self, renderer: &str) -> bool {
+    fn supports_renderer(&self, _renderer: &str) -> bool {
         true
     }
 }

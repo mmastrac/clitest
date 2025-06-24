@@ -66,7 +66,6 @@ struct Args {
 
 struct ScriptToRun {
     original_path: ScriptFile,
-    canonical_path: PathBuf,
     script: Script,
 }
 
@@ -77,12 +76,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .scripts
         .iter()
         .map(|path| {
-            let canonical_path = dunce::canonicalize(path)?;
             let script_file = ScriptFile::new(path.clone());
             let script = parse_script(script_file.clone(), &std::fs::read_to_string(path)?)?;
             Ok(ScriptToRun {
                 original_path: script_file.clone(),
-                canonical_path,
                 script,
             })
         })

@@ -772,6 +772,7 @@ impl Script {
         args: ScriptRunArgs,
         output: ScriptOutput,
     ) -> Result<(), ScriptRunError> {
+        let start = Instant::now();
         let script_path = &*self.file.file;
         let mut context = ScriptRunContext::new(args, script_path, output);
 
@@ -786,13 +787,23 @@ impl Script {
         // Handle success and error output
         if let Err(ref e) = result {
             cwrite!(context.stream(), fg = Color::Cyan, "{} ", script_path);
-            cwriteln!(context.stream(), fg = Color::Red, "FAILED");
+            cwrite!(context.stream(), fg = Color::Red, "FAILED");
+            if !context.args.simplified_output {
+                cwriteln!(context.stream(), " ({:.2}s)", start.elapsed().as_secs_f32());
+            } else {
+                cwriteln!(context.stream());
+            }
             cwrite!(context.stream(), fg = Color::Red, "Error: ");
             cwriteln!(context.stream(), "{}", e);
             cwriteln!(context.stream());
         } else {
             cwrite!(context.stream(), fg = Color::Cyan, "{} ", script_path);
-            cwriteln!(context.stream(), fg = Color::Green, "PASSED");
+            cwrite!(context.stream(), fg = Color::Green, "PASSED");
+            if !context.args.simplified_output {
+                cwriteln!(context.stream(), " ({:.2}s)", start.elapsed().as_secs_f32());
+            } else {
+                cwriteln!(context.stream());
+            }
         }
 
         result
@@ -904,12 +915,16 @@ impl ScriptBlock {
                         kill_sender.kill();
                         let start = std::time::Instant::now();
                         let mut warned = false;
+
+                        let timeout = context.args.timeout.unwrap_or(DEFAULT_TIMEOUT);
+                        let warn_at = timeout * 8 / 10;
+
                         let results = loop {
                             if handle.is_finished() {
                                 break handle.join().unwrap()?;
                             }
                             std::thread::sleep(std::time::Duration::from_millis(10));
-                            if !warned && start.elapsed() > std::time::Duration::from_secs(10) {
+                            if !warned && start.elapsed() > warn_at {
                                 cwriteln!(
                                     context.stream(),
                                     fg = Color::Yellow,
@@ -917,7 +932,7 @@ impl ScriptBlock {
                                 );
                                 warned = true;
                             }
-                            if start.elapsed() > context.args.timeout.unwrap_or(DEFAULT_TIMEOUT) {
+                            if start.elapsed() > timeout {
                                 cwriteln!(
                                     context.stream(),
                                     fg = Color::Red,
@@ -1287,7 +1302,14 @@ impl Serialize for ForCondition {
     where
         S: serde::Serializer,
     {
-        todo!()
+        match self {
+            ForCondition::Env(name, values) => {
+                let mut ser = serializer.serialize_map(Some(2))?;
+                ser.serialize_entry("env", name)?;
+                ser.serialize_entry("values", values)?;
+                ser.end()
+            }
+        }
     }
 }
 
@@ -1311,6 +1333,7 @@ impl ScriptCommand {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<ScriptResult, ScriptRunError> {
         let command = &self.command;
         let args = &context.args;
+        let start = Instant::now();
 
         if let Some(delay) = args.delay_steps {
             std::thread::sleep(std::time::Duration::from_millis(delay));
@@ -1381,6 +1404,7 @@ impl ScriptCommand {
             command: command.clone(),
             pattern: pattern_result,
             exit: exit_result,
+            elapsed: start.elapsed(),
             output,
         })
     }
@@ -1391,6 +1415,7 @@ pub struct ScriptResult {
     pub command: CommandLine,
     pub pattern: PatternResult,
     pub exit: ExitResult,
+    pub elapsed: Duration,
     #[debug(skip)]
     pub output: Lines,
 }
@@ -1473,13 +1498,33 @@ impl ScriptResult {
 
         if let ExitResult::Matches(status) = self.exit {
             if status.success() {
-                cwriteln!(context.stream(), fg = Color::Green, "{success} OK");
+                cwrite!(context.stream(), fg = Color::Green, "{success} OK");
+                if !context.args.simplified_output {
+                    cwriteln!(
+                        context.stream(),
+                        dimmed = true,
+                        " ({:.2}s)",
+                        self.elapsed.as_secs_f32()
+                    );
+                } else {
+                    cwriteln!(context.stream());
+                }
             } else {
-                cwriteln!(
+                cwrite!(
                     context.stream(),
                     fg = Color::Green,
                     "{success} OK ({status})"
                 );
+                if !context.args.simplified_output {
+                    cwriteln!(
+                        context.stream(),
+                        dimmed = true,
+                        " ({:.2}s)",
+                        self.elapsed.as_secs_f32()
+                    );
+                } else {
+                    cwriteln!(context.stream());
+                }
             }
             cwriteln!(context.stream());
         }

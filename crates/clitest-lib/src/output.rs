@@ -523,7 +523,7 @@ impl OutputPatternType {
                             });
                         }
                     };
-                    if let Some(matches) = res {
+                    if let Some(_matches) = res {
                         context.trace(&format!("pattern match: {:?} =~ {pattern:?}", line.text));
                         Ok(next)
                     } else {

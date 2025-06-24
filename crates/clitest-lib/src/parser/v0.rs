@@ -204,6 +204,7 @@ impl ScriptV0Segment {
         }
     }
 
+    #[expect(unused)]
     fn is_meta_block(&self) -> bool {
         match self {
             ScriptV0Segment::Block(block) => block.block_type.is_meta(),
@@ -219,6 +220,7 @@ impl ScriptV0Segment {
         }
     }
 
+    #[allow(unused)]
     fn last_location(&self) -> &ScriptLocation {
         match self {
             ScriptV0Segment::Block(block) => &block.lines.last().unwrap().location,
@@ -550,17 +552,6 @@ struct OutputPatternBuilder {
     ignore: Vec<OutputPattern>,
     reject: Vec<OutputPattern>,
     patterns: Vec<OutputPattern>,
-}
-
-impl OutputPatternBuilder {
-    fn push(&mut self, location: ScriptLocation, pattern: OutputPatternType) {
-        self.patterns.push(OutputPattern {
-            pattern,
-            ignore: Default::default(),
-            reject: Default::default(),
-            location,
-        });
-    }
 }
 
 fn parse_normalized_script_v0(
@@ -1113,8 +1104,6 @@ mod tests {
             }
         }
         "#;
-        let grok = Grok::with_default_patterns();
-        let file = ScriptFile::new("test.cli");
         let pattern = parse_pattern(pattern).unwrap();
         eprintln!("{pattern:?}");
     }
