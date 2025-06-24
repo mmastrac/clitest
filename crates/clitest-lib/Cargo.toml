@@ -37,7 +37,7 @@ dunce.workspace = true
 pretty_assertions.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-win32job = "2"
+win32job = "2.0.3"
 tlhelp32 = "1"
 windows-sys = { version = "0.59.0", features = ["Win32_System_Threading"] }
 
