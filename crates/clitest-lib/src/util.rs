@@ -64,7 +64,7 @@ impl From<&'_ NicePathBuf> for NicePathBuf {
 
 impl From<&'_ Path> for NicePathBuf {
     fn from(path: &Path) -> Self {
-        NicePathBuf::new(path.to_owned())
+        NicePathBuf::new(path)
     }
 }
 
@@ -154,6 +154,12 @@ pub struct NiceTempDir {
     path: TempDir,
 }
 
+impl Default for NiceTempDir {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NiceTempDir {
     pub fn new() -> Self {
         let path = if cfg!(target_vendor = "apple") {
@@ -218,7 +224,7 @@ fn canonicalize_path(path: &Path) -> Cow<Path> {
     // component that exists.
     let mut path = path;
     while let Some(parent) = path.parent() {
-        if let Ok(mut path) = dunce::canonicalize(&parent) {
+        if let Ok(mut path) = dunce::canonicalize(parent) {
             for component in rest.components() {
                 match component {
                     Component::ParentDir => {
@@ -259,11 +265,9 @@ fn write_pretty_path(
     let mut canon_path = canonicalize_path(path);
 
     // On Apple, we can strip the /private prefix from the path for display purposes
-    if cfg!(target_vendor = "apple") {
-        if canon_path.is_absolute() {
-            if let Ok(without_private) = canon_path.strip_prefix("/private") {
-                canon_path = Path::new("/").join(without_private).into();
-            }
+    if cfg!(target_vendor = "apple") && canon_path.is_absolute() {
+        if let Ok(without_private) = canon_path.strip_prefix("/private") {
+            canon_path = Path::new("/").join(without_private).into();
         }
     }
 
@@ -272,7 +276,7 @@ fn write_pretty_path(
     if let Some(cwd) = cwd {
         if let Ok(path) = canon_path.strip_prefix(cwd) {
             if debug {
-                write_debug_path(f, &path)?;
+                write_debug_path(f, path)?;
             } else {
                 write!(f, "{}", path.display())?;
             }
@@ -283,7 +287,7 @@ fn write_pretty_path(
     // Unlikely, but just print the path if we're not on unix or windows
     if !cfg!(unix) && !cfg!(windows) {
         if debug {
-            write_debug_path(f, &path)?;
+            write_debug_path(f, path)?;
         } else {
             write!(f, "{}", path.display())?;
         }
@@ -437,39 +441,35 @@ pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
                 } else {
                     accum.push(c);
                 }
-            } else {
-                if in_escape {
-                    in_escape = false;
-                    accum.push('\\');
-                    accum.push(c);
-                } else if c == '\\' {
-                    in_escape = true;
-                } else if c == string_char {
-                    in_string = None;
-                    if c == '"' {
-                        result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
-                    }
-                } else {
-                    accum.push(c);
-                }
-            }
-        } else {
-            if c == '\\' {
-                in_escape = true;
             } else if in_escape {
                 in_escape = false;
                 accum.push('\\');
                 accum.push(c);
-            } else if c == '"' || c == '\'' {
-                in_string = Some(c);
-            } else if c == ' ' {
-                if accum.is_empty() {
-                    continue;
+            } else if c == '\\' {
+                in_escape = true;
+            } else if c == string_char {
+                in_string = None;
+                if c == '"' {
+                    result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
                 }
-                result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
             } else {
                 accum.push(c);
             }
+        } else if c == '\\' {
+            in_escape = true;
+        } else if in_escape {
+            in_escape = false;
+            accum.push('\\');
+            accum.push(c);
+        } else if c == '"' || c == '\'' {
+            in_string = Some(c);
+        } else if c == ' ' {
+            if accum.is_empty() {
+                continue;
+            }
+            result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
+        } else {
+            accum.push(c);
         }
     }
     if let Some(string_char) = in_string {
@@ -480,7 +480,7 @@ pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
         result.push(ShellBit::Quoted(std::mem::take(&mut accum)));
     }
 
-    return Ok(result);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -506,7 +506,7 @@ mod tests {
         assert_eq!("\"/tmp/hello.world\"", format!("{:?}", path));
 
         let path = NicePathBuf::new(
-            &Path::new("/tmp")
+            Path::new("/tmp")
                 .canonicalize()
                 .unwrap()
                 .join("hello.world"),
