@@ -5,9 +5,6 @@ echo "Goodnight, forever!" && sleep 60
 Goodnight, forever!
 Process took too long!
 ---
-❌ FAIL: timed out
- → echo "Goodnight, forever!" && sleep 60
+✅ OK (timed out)
 
-<root>/timeout.cli FAILED
-Error: timed out
-
+<root>/timeout.cli PASSED

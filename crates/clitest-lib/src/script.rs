@@ -13,7 +13,7 @@ use serde::{Serialize, ser::SerializeMap};
 use termcolor::{Color, ColorChoice, WriteColor};
 
 use crate::{
-    command::CommandLine,
+    command::{CommandLine, CommandResult},
     util::{NicePathBuf, NiceTempDir},
 };
 use crate::{cwrite, cwriteln, cwriteln_rule};
@@ -745,7 +745,7 @@ pub enum ScriptRunError {
     #[error("{0}")]
     Pattern(#[from] OutputPatternMatchFailure),
     #[error("{0}")]
-    Exit(ExitStatus),
+    Exit(CommandResult),
     #[error("expected failure, but passed")]
     ExpectedFailure,
     #[error("{0}")]
@@ -831,15 +831,20 @@ pub enum CommandExit {
     #[default]
     Success,
     Failure(i32),
+    Timeout,
     Any,
 }
 
 impl CommandExit {
-    pub fn matches(&self, status: ExitStatus) -> bool {
-        match self {
-            CommandExit::Success => status.success(),
-            CommandExit::Failure(code) => *code == status.code().unwrap_or(-1),
-            CommandExit::Any => true,
+    pub fn matches(&self, status: CommandResult) -> bool {
+        match (self, status) {
+            (CommandExit::Success, CommandResult::Exit(status)) => status.success(),
+            (CommandExit::Failure(code), CommandResult::Exit(status)) => {
+                *code == status.code().unwrap_or(-1)
+            }
+            (CommandExit::Timeout, CommandResult::TimedOut) => true,
+            (CommandExit::Any, _) => true,
+            _ => false,
         }
     }
 
@@ -1561,8 +1566,9 @@ pub enum PatternResult {
 
 #[derive(Debug)]
 pub enum ExitResult {
-    Matches(ExitStatus),
-    Mismatch(ExitStatus),
+    Matches(CommandResult),
+    Mismatch(CommandResult),
+    TimedOut,
 }
 
 #[cfg(test)]

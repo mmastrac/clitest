@@ -2,7 +2,7 @@
 
 ## Running Tests
 
-To run tests using clitest, use the following command:
+To run tests using `clitest`, just pass the tests files to the `clitest` command:
 
 ```bash
 clitest [options] [test-file] [test-file] ...
@@ -72,7 +72,14 @@ $ exit 1
 %EXIT 1
 ```
 
-Or to accept any exit code:
+To expect a command to return a failing exit code (ie: non-zero):
+
+```bash session
+$ exit 1
+%EXIT fail
+```
+
+Or to accept any exit code (this will also accept a command that times out):
 
 ```bash session
 $ exit 1

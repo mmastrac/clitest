@@ -2,7 +2,9 @@
 
 ## Prerequisites
 
-Before installing clitest, make sure you have Rust and Cargo installed on your system. You can install them by following the instructions on the [Rust installation page](https://www.rust-lang.org/tools/install).
+Before installing clitest, make sure you have Rust and Cargo installed on your
+system. You can install them by following the instructions on the [Rust
+installation page](https://www.rust-lang.org/tools/install).
 
 ## Installing clitest
 

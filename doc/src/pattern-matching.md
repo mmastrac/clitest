@@ -1,6 +1,7 @@
 # Pattern Matching
 
-clitest provides two main types of pattern matching: auto-escaped patterns (`!`) and raw patterns (`?`). Each has its own use cases and syntax.
+clitest provides two main types of pattern matching: auto-escaped patterns (`!`)
+and raw patterns (`?`). Each has its own use cases and syntax.
 
 ## Auto-escaped Patterns (`!`)
 
@@ -13,7 +14,8 @@ $ printf "[LOG] Hello, world!\n"
 
 ## Raw Patterns (`?`)
 
-Raw patterns treat everything as a pattern, requiring special characters to be escaped with backslash:
+Raw patterns treat everything as a pattern, requiring special characters to be
+escaped with backslash:
 
 ```bash session
 $ printf "[LOG] Hello, world!\n"
@@ -29,7 +31,7 @@ $ printf "  X  \n"
 
 ## Grok Patterns
 
-clitest supports [grok patterns](https://www.ibm.com/docs/en/streamsets/6.x?topic=guide-grok-patterns) for flexible matching:
+clitest supports [grok patterns](./grok-patterns.md) for flexible matching:
 
 ```bash session
 $ echo "Hello, anything"

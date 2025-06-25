@@ -728,6 +728,8 @@ fn parse_normalized_script_v0_commands(
                         command.expect_failure = true;
                     } else if line.starts_with("%EXIT any") {
                         command.exit = CommandExit::Any;
+                    } else if line.starts_with("%EXIT timeout") {
+                        command.exit = CommandExit::Timeout;
                     } else if line.starts_with("%EXIT ") {
                         if let Ok(status) = line.text()[6..].parse::<i32>() {
                             command.exit = CommandExit::Failure(status);

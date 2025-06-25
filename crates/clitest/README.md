@@ -61,7 +61,7 @@ The test files use the following syntax:
 
 - `%SET <var>` - Set the variable to the output of the command (`PWD` is special
   and controls the current working directory)
-- `%EXIT <n|any>` - Expect exit with the given exit code (or any if `any` is used)
+- `%EXIT <n|any|timeout>` - Expect exit with the given exit code (or any if `any` is used)
 - `%EXPECT_FAILURE` - Expect the pattern match to fail (and fail the test if it succeeds)
 - `%TIMEOUT <duration>` - Set the timeout for the command (default is `30s`,
   suffixes `s`, `ms`, `us`, etc are supported)
@@ -77,11 +77,10 @@ $ echo "a\nb\nc"
 ! c
 ```
 
-Match using a [grok](https://www.ibm.com/docs/en/streamsets/6.x?topic=guide-grok-patterns) pattern:
+Match using a [grok](https://mmastrac.github.io/clitest/grok-patterns.html) pattern:
 
 ```shell
 $ echo "Hello, anything"
 ? Hello, %{GREEDYDATA}
 ```
-
 

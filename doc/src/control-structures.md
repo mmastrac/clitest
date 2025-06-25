@@ -41,11 +41,17 @@ if TARGET_OS == "linux" {
 }
 ```
 
-Note that pattern `if` blocks and control `if` blocks have identical syntax, but one contains patterns and the other contains commands.
+Note that pattern `if` blocks and control `if` blocks have identical syntax, but
+one contains patterns and the other contains commands.
 
 ## Background processes
 
-Run commands in the background using `background { }`. When the block ends, the background process is automatically killed. If the test exits early (e.g., due to a failure), background processes are also killed.
+Run commands in the background using `background { }`. When the block ends, the
+background process is automatically killed. If the test exits early (e.g., due
+to a failure), background processes are also killed.
+
+Commands running in a `background` block have no explicit timeout, but you can
+set an explicit timeout for each command with `%TIMEOUT` if needed.
 
 ```bash session
 using tempdir;
@@ -65,7 +71,8 @@ retry {
 
 ## Deferred cleanup
 
-Run commands after the block finishes. Multiple `defer` blocks are executed in reverse order (last in, first out):
+Run commands after the block finishes. Multiple `defer` blocks are executed in
+reverse order (last in, first out):
 
 ```bash session
 defer {
@@ -95,8 +102,8 @@ retry {
 }
 ``` 
 
-`retry` uses the global timeout for the test, but you can set a timeout for the
-command itself with `%TIMEOUT`:
+`retry` uses the global timeout for the whole `retry` block, but you can set a
+shorter timeout for the command itself with `%TIMEOUT`:
 
 ```bash session
 retry {

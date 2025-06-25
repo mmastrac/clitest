@@ -40,6 +40,8 @@ if $TARGET_OS == "linux" {
 Run and manage background processes, using `retry` to wait for the process to start:
 
 ```bash session
+using tempdir;
+
 background {
     $ python3 -m http.server 60800 2> server.log
     %EXIT any
@@ -85,6 +87,7 @@ Set a timeout for a command:
 
 ```bash session
 $ sleep 60
+%EXIT timeout
 %TIMEOUT 100ms
 ```
 
@@ -114,10 +117,10 @@ $ echo "Hello World"
 ### Test Organization
 
 1. Group related tests together and use descriptive comments.
-3. Keep tests focused and atomic
-4. Use variables for reusable values
-5. Use `ignore` for noisy output, prefer a global `ignore` block over many, repeated `ignore { }` blocks.
-6. Add `defer` blocks for cleanup immediately after allocation or creation of resources.
+2. Keep tests focused and atomic
+3. Use variables for reusable values
+4. Use `ignore` for noisy output, prefer a global `ignore` block over many, repeated `ignore { }` blocks.
+5. Add `defer` blocks for cleanup immediately after allocation or creation of resources.
 
 ### Example of Complex Test
 
@@ -136,9 +139,9 @@ using tempdir;
 
 # Start server in background
 background {
-    $ echo "{\"status\": \"success\"}" > api
-    $ echo "OK" > health
-    $ python3 -m http.server 60800 2> server.log
+    $ echo "{\"status\": \"success\"}" > api.json
+    $ echo "OK" > health.json
+    $ python3 -m http.server 60900 2> server.log
     %EXIT any
 }
 
@@ -148,12 +151,12 @@ defer {
 
 # Wait for server to start
 retry {
-    $ curl -s http://localhost:60800/health
+    $ curl -s http://localhost:60900/health.json
     ! OK
 }
 
 # Test main functionality
-$ curl -s http://localhost:60800/api
+$ curl -s http://localhost:60900/api.json
 ! {"status": "success"}
 
 # Verify logs
@@ -168,15 +171,3 @@ repeat {
 # Cleanup is automatic!
 ```
 
-## Performance Considerations
-
-2. Minimize background processes
-3. Use appropriate timeouts
-4. Clean up resources properly
-
-## Debugging Tips
-
-1. Use `%EXPECT_FAILURE` to test patterns
-2. Check exit codes with `%EXIT`
-3. Use variables to capture intermediate results
-4. Add descriptive comments 

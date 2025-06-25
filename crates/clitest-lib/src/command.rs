@@ -16,6 +16,25 @@ use crate::{
     script::{ScriptKillReceiver, ScriptKillSender, ScriptLocation},
 };
 
+#[derive(Copy, Clone, derive_more::Debug, derive_more::Display, PartialEq, Eq)]
+pub enum CommandResult {
+    #[debug("{_0:?}")]
+    #[display("{_0}")]
+    Exit(ExitStatus),
+    #[debug("timed out")]
+    #[display("timed out")]
+    TimedOut,
+}
+
+impl CommandResult {
+    pub fn success(&self) -> bool {
+        match self {
+            CommandResult::Exit(status) => status.success(),
+            CommandResult::TimedOut => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(transparent)]
 pub struct CommandLine {
@@ -44,7 +63,7 @@ impl CommandLine {
         envs: &HashMap<String, String>,
         kill_receiver: &ScriptKillReceiver,
         kill_sender: &ScriptKillSender,
-    ) -> Result<(Lines, ExitStatus), std::io::Error> {
+    ) -> Result<(Lines, CommandResult), std::io::Error> {
         let start = Instant::now();
         let warn_time = timeout.saturating_mul(90) / 100;
         let timeout = timeout.saturating_mul(110) / 100;
@@ -152,10 +171,7 @@ impl CommandLine {
                     cwriteln!(writer, fg = Color::Yellow, "Process took too long!");
                     kill_sender.kill();
 
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "process took too long to join",
-                    ));
+                    return Ok((Lines::new(output_lines), CommandResult::TimedOut));
                 }
 
                 let mut new_handles = vec![];
@@ -172,7 +188,10 @@ impl CommandLine {
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
 
-            Ok((Lines::new(output_lines), runner.join().unwrap()?))
+            Ok((
+                Lines::new(output_lines),
+                CommandResult::Exit(runner.join().unwrap()?),
+            ))
         })
     }
 }
