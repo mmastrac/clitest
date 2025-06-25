@@ -728,6 +728,8 @@ fn parse_normalized_script_v0_commands(
                         command.expect_failure = true;
                     } else if line.starts_with("%EXIT any") {
                         command.exit = CommandExit::Any;
+                    } else if line.starts_with("%EXIT fail") {
+                        command.exit = CommandExit::AnyFailure;
                     } else if line.starts_with("%EXIT timeout") {
                         command.exit = CommandExit::Timeout;
                     } else if line.starts_with("%EXIT ") {

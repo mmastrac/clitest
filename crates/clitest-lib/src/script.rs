@@ -833,6 +833,7 @@ pub enum CommandExit {
     Failure(i32),
     Timeout,
     Any,
+    AnyFailure,
 }
 
 impl CommandExit {
@@ -844,6 +845,8 @@ impl CommandExit {
             }
             (CommandExit::Timeout, CommandResult::TimedOut) => true,
             (CommandExit::Any, _) => true,
+            (CommandExit::AnyFailure, CommandResult::Exit(status)) => !status.success(),
+            (CommandExit::AnyFailure, _) => true,
             _ => false,
         }
     }
