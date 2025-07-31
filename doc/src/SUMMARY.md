@@ -9,3 +9,4 @@
 - [Control Structures](./control-structures.md)
 - [Environment and Variables](./environment.md)
 - [Advanced Features](./advanced-features.md)
+- [Reference](./reference.md)
