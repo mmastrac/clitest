@@ -738,6 +738,8 @@ pub enum ScriptErrorType {
     InvalidBlockEnd,
     #[error("invalid if condition")]
     InvalidIfCondition,
+    #[error("expected block or semi-colon (did you forget to add ';' at the end of this line?)")]
+    ExpectedBlockOrSemi,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1584,7 +1586,7 @@ mod tests {
     #[test]
     fn test_script() -> Result<(), Box<dyn Error>> {
         let script = r#"
-pattern VERSION \d+\.\d+\.\d+
+pattern VERSION \d+\.\d+\.\d+;
 
 $ something --version || echo 1
 ? Something %{VERSION}

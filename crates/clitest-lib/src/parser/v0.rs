@@ -252,20 +252,24 @@ fn segment_script(
     let mut segments = Vec::new();
     let mut current_segment = None;
 
-    fn is_subblock(text: &str) -> Option<(bool, &str, &str)> {
+    fn is_subblock(text: &str) -> Result<Option<(bool, &str, &str)>, ScriptErrorType> {
         // Workaround for missing let chains
         if text.starts_with(|c: char| c.is_alphabetic()) {
             let is_semi = text.ends_with(';');
-            text.strip_suffix(|c: char| c == '{' || c == ';')
-                .map(|text| {
-                    if let Some((block_type, args)) = text.trim().split_once(char::is_whitespace) {
-                        (is_semi, block_type.trim(), args.trim())
-                    } else {
-                        (is_semi, text.trim(), "")
-                    }
-                })
+            let Some(text) = text.strip_suffix(|c: char| c == '{' || c == ';') else {
+                return Err(ScriptErrorType::ExpectedBlockOrSemi);
+            };
+            // TODO: special case for pattern -- this should become a command
+            if text.trim().starts_with("pattern ") {
+                return Ok(None);
+            }
+            if let Some((block_type, args)) = text.trim().split_once(char::is_whitespace) {
+                Ok(Some((is_semi, block_type.trim(), args.trim())))
+            } else {
+                Ok(Some((is_semi, text.trim(), "")))
+            }
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -281,6 +285,21 @@ fn segment_script(
             multiline_terminator = Some("!!!");
         } else if line.text() == "???" {
             multiline_terminator = Some("???");
+        }
+
+        if multiline_terminator.is_some() {
+            let segment = current_segment.get_or_insert(ScriptV0Block {
+                block_type: BlockType::Pattern,
+                lines: Vec::new(),
+                location: line.location.clone(),
+            });
+            if !segment.block_type.is_same_type_as(&BlockType::Pattern) {
+                segments.push(ScriptV0Segment::Block(
+                    segment.take(line.location.clone(), BlockType::Pattern),
+                ));
+            }
+            segment.lines.push(line.clone());
+            continue;
         }
 
         // For commands, we greedily consume all lines until we successfully
@@ -318,7 +337,9 @@ fn segment_script(
                 lines: block_lines,
                 location: line.location.clone(),
             }));
-        } else if let Some((is_semi, block_type, args)) = is_subblock(line.text()) {
+        } else if let Some((is_semi, block_type, args)) =
+            is_subblock(line.text()).map_err(|e| ScriptError::new(e, line.location.clone()))?
+        {
             if let Some(segment) = current_segment.take() {
                 segments.push(ScriptV0Segment::Block(segment));
             }
@@ -645,7 +666,10 @@ fn parse_normalized_script_v0_commands(
 
         if let ScriptV0Segment::Semi(location, text, args) = command {
             segments = remaining;
-            if text == "using" {
+            if text == "pattern" {
+                // TODO: this should become a command, but for now, skip
+                continue;
+            } else if text == "using" {
                 if args.len() == 1 && args[0] == "tempdir" {
                     commands.push(ScriptBlock::InternalCommand(InternalCommand::UsingTempdir));
                     continue;
@@ -852,6 +876,13 @@ fn parse_script_v0_segment(
                         line.first_char().unwrap(),
                     )?);
                 } else if let Some(pattern) = line.strip_prefix("pattern ") {
+                    if !pattern.ends_with(';') {
+                        return Err(ScriptError::new(
+                            ScriptErrorType::InvalidPatternDefinition,
+                            line.location.clone(),
+                        ));
+                    }
+                    let pattern = pattern.trim_end_matches(';');
                     if let Some((name, pattern)) = pattern.split_once(' ') {
                         grok.add_pattern(name, pattern);
                     } else {

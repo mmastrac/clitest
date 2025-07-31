@@ -12,7 +12,7 @@
 #   - choice { ... }
 #   - unordered { ... }
 
-pattern FILENAME [\w\-\.]+
+pattern FILENAME [\w\-\.]+;
 
 using tempdir;
 
