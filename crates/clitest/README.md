@@ -26,52 +26,93 @@ match the expected output.
 
 The test files use the following syntax:
 
-- `# <comment>` - Comments that are ignored during test execution
+### Command Execution
 
-### Top-level
+| Command               | Description                                   |
+| --------------------- | --------------------------------------------- |
+| `$ <command> …`       | Execute a shell command and match its output  |
+| `%EXIT <n>`           | Expect command to exit with specific code n   |
+| `%EXIT fail`          | Expect command to exit with any non-zero code |
+| `%EXIT any`           | Accept any exit code (including timeouts)     |
+| `%EXIT timeout`       | Expect command to timeout                     |
+| `%TIMEOUT <duration>` | Set timeout for a command (e.g., 100ms, 5s)   |
+| `%SET <variable>`     | Capture command output into a variable        |
+| `%EXPECT_FAILURE`     | Expect pattern matching to fail               |
 
-- `background { ... }` - Run the enclosed commands in the background, killing
-  them when the current block finishes
-- `defer { ... }` - Run the enclosed commands after the test has finished
-- `retry { ... }` - Run the enclosed commands until they succeed or the test times out
-- `for <var> in <list> { ... }` - Run the enclosed commands for each item in the list
-- `if <condition> { ... }` - Run the enclosed commands if the condition is true
-- `$ <command>` - Shell command to execute
+### Variables and Quoting
+
+clitest uses shell-style variable references and quoting to delimit strings in
+commands and control structures.
+
+| Quote Type | Behavior                                              |
+| ---------- | ----------------------------------------------------- |
+| `'text'`   | Single quotes - literal value, no expansion           |
+| `"text"`   | Double quotes - literal value with variable expansion |
+| `\char`    | Backslash escape - preserve literal meaning           |
+| `$VAR`     | Basic variable reference                              |
+| `${VAR}`   | Explicit variable reference                           |
+| `$PWD`     | Special variable for working directory                |
+
+### Control Structures
+
+| Structure                 | Description                                            |
+| ------------------------- | ------------------------------------------------------ |
+| `# <comment>`             | Ignore this line during test execution                 |
+| `if condition { … }`      | Conditionally execute commands                         |
+| `for <var> in <…> { … }`  | Iterate over a list of values                          |
+| `background { … }`        | Run commands in background (auto-killed on exit)       |
+| `defer { … }`             | Execute cleanup commands after block ends (LIFO order) |
+| `retry { … }`             | Retry commands until success or timeout                |
+| `exit script;`            | Exit script early with success status                  |
+| `set <var> <value>;`      | Set environment variable directly                      |
+| `cd <directory>;`         | Change working directory                               |
+| `using tempdir;`          | Create and use temporary directory (auto-deleted)      |
+| `using new dir <name>;`   | Create new directory for testing (auto-deleted)        |
+| `using dir <path>;`       | Use existing directory (not deleted)                   |
+| `pattern <NAME> <regex>;` | Define custom grok pattern                             |
 
 ### Patterns
 
-- `? <grok pattern>` - Match output using a grok pattern (ie: parts outside of
-  the grok patterns are interpreted as regex)
-- `! <grok pattern>` - Match output using an auto-escaped grok pattern (ie: the
-  non-grok parts will be escaped so that they are not interpreted as regex)
-- `!!!` - Multi-line ! block (starts and ends with `!!!`)
-- `???` - Multi-line ? block (starts and ends with `???`)
-- `repeat { ... }` - Match the enclosed patterns multiple times
-- `optional { ... }` - Match the enclosed patterns zero or one time
-- `choice { ... }` - Match one of the enclosed patterns
-- `unordered { ... }` - Match all enclosed patterns in any order
-- `sequence { ... }` - Match all enclosed patterns in sequence
-- `ignore { ... }` - Ignore any output that matches the enclosed patterns
-- `reject { ... }` - Fail if any output matches the enclosed patterns
-- `*` - Match any output, lazily (completes when the next structure matches)
-- `if <condition> { ... }` - Run the enclosed patterns if the condition is true
-  (eg: `if $TARGET_OS == "linux"` or `if $TARGET_ARCH != "arm"`)
+| Pattern                              | Description                                                  |
+| ------------------------------------ | ------------------------------------------------------------ |
+| `! <text>`                           | Auto-escaped pattern (literal text matching + grok patterns) |
+| `? <pattern>`                        | Raw pattern (regex-style, requires escaping + grok patterns) |
+| `!!!`                                | Multi-line auto-escaped pattern block                        |
+| `???`                                | Multi-line raw pattern block                                 |
+| `*`                                  | Any pattern (matches any number of lines lazily)             |
+| `%{PATTERN_NAME}`                    | Standard grok pattern                                        |
+| `%{PATTERN_NAME=(regex)}`            | Custom grok pattern with regex                               |
+| `%{PATTERN_NAME:field_name}`         | Named grok pattern with output field                         |
+| `%{PATTERN_NAME:field_name=(regex)}` | Custom named grok pattern                                    |
+| `repeat { … }`                       | Match pattern multiple times                                 |
+| `choice { … }`                       | Match any one of specified patterns                          |
+| `unordered { … }`                    | Match patterns in any order                                  |
+| `sequence { … }`                     | Match patterns in strict order                               |
+| `optional { … }`                     | Make pattern optional (zero or one match)                    |
+| `if <condition> { … }`               | Conditionally require patterns                               |
+| `ignore { … }`                       | Skip/ignore certain output patterns                          |
+| `reject { … }`                       | Ensure patterns don't appear in output                       |
 
-### Special modifiers
+### Common Grok Patterns
 
-- `%SET <var>` - Set the variable to the output of the command (`PWD` is special
-  and controls the current working directory)
-- `%EXIT <n|any|timeout>` - Expect exit with the given exit code (or any if `any` is used)
-- `%EXPECT_FAILURE` - Expect the pattern match to fail (and fail the test if it succeeds)
-- `%TIMEOUT <duration>` - Set the timeout for the command (default is `30s`,
-  suffixes `s`, `ms`, `us`, etc are supported)
+This is a subset of the grok patterns supported by clitest. See the full list of
+supported patterns at <https://docs.rs/grok/latest/grok/patterns/index.html>,
+including the full base patterns in the `grok` module:
+<https://docs.rs/grok/latest/grok/patterns/grok/index.html>.
+
+| Pattern         | Description               | Example                |
+| --------------- | ------------------------- | ---------------------- |
+| `%{DATA}`       | Matches any text (lazy)   | `Hello, %{DATA}`       |
+| `%{GREEDYDATA}` | Matches any text (greedy) | `Hello, %{GREEDYDATA}` |
+| `%{WORD}`       | Matches word characters   | `[%{WORD}]`            |
+| `%{NUMBER}`     | Matches numeric values    | `Count: %{NUMBER}`     |
 
 ## Examples
 
 Match exact output:
 
 ```shell
-$ echo "a\nb\nc"
+$ printf "a\nb\nc"
 ! a
 ! b
 ! c

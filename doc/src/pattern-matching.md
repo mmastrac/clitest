@@ -214,9 +214,12 @@ reject {
 You can use `if` blocks in patterns to conditionally match output:
 
 ```bash session
+$ echo `uname -s` specific output
 if $TARGET_OS == "linux" {
-    $ echo Linux specific output
-    ? Linux specific %{GREEDYDATA}
+    ! Linux specific output
+}
+if $TARGET_OS != "linux" {
+    ! %{DATA} specific output
 }
 ```
 

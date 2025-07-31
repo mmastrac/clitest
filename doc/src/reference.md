@@ -18,6 +18,9 @@ category.
 
 ## Variables and Quoting
 
+clitest uses shell-style variable references and quoting to delimit strings in
+commands and control structures.
+
 | Quote Type | Behavior                                              | Location                                              |
 | ---------- | ----------------------------------------------------- | ----------------------------------------------------- |
 | `'text'`   | Single quotes - literal value, no expansion           | [Control Structures](./control-structures.md#quoting) |
@@ -31,6 +34,7 @@ category.
 
 | Structure                 | Description                                            | Location                                                           |
 | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
+| `# <comment>`             | Ignore this line during test execution                 | [Control Structures](./control-structures.md#comments)             |
 | `if condition { … }`      | Conditionally execute commands or patterns             | [Control Structures](./control-structures.md#conditional-blocks)   |
 | `for <var> in <…> { … }`  | Iterate over a list of values                          | [Control Structures](./control-structures.md#for-loops)            |
 | `background { … }`        | Run commands in background (auto-killed on exit)       | [Control Structures](./control-structures.md#background-processes) |
@@ -62,10 +66,16 @@ category.
 | `unordered { … }`                    | Match patterns in any order                                  | [Pattern Matching](./pattern-matching.md#unordered)               |
 | `sequence { … }`                     | Match patterns in strict order                               | [Pattern Matching](./pattern-matching.md#sequence)                |
 | `optional { … }`                     | Make pattern optional (zero or one match)                    | [Pattern Matching](./pattern-matching.md#optional)                |
+| `if <condition> { … }`               | Conditionally require patterns                               | [Pattern Matching](./pattern-matching.md#conditional-patterns)    |
 | `ignore { … }`                       | Skip/ignore certain output patterns                          | [Pattern Matching](./pattern-matching.md#ignore)                  |
 | `reject { … }`                       | Ensure patterns don't appear in output                       | [Pattern Matching](./pattern-matching.md#reject)                  |
 
 ## Common Grok Patterns
+
+This is a subset of the grok patterns supported by clitest. See the full list of
+supported patterns at <https://docs.rs/grok/latest/grok/patterns/index.html>,
+including the full base patterns in the `grok` module:
+<https://docs.rs/grok/latest/grok/patterns/grok/index.html>.
 
 | Pattern         | Description               | Example                |
 | --------------- | ------------------------- | ---------------------- |
