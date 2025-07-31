@@ -760,6 +760,9 @@ pub enum ScriptRunError {
     BackgroundProcessTookTooLong,
     #[error("retry took too long to finish")]
     RetryTookTooLong,
+    /// Internal flow control: exit the script
+    #[error("exiting script")]
+    ExitScript,
 }
 
 impl ScriptRunError {
@@ -774,13 +777,19 @@ impl ScriptRunError {
             Self::BackgroundProcessTookTooLong => "BackgroundProcessTookTooLong".to_string(),
             Self::ExpansionError(e) => "ExpansionError".to_string(),
             Self::RetryTookTooLong => "RetryTookTooLong".to_string(),
+            Self::ExitScript => unreachable!(),
         }
     }
 }
 
 impl Script {
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
-        let v = ScriptBlock::run_blocks(context, &self.commands)?;
+        let v = match ScriptBlock::run_blocks(context, &self.commands) {
+            Ok(v) => v,
+            // Bypass normal script processing and exit successfully
+            Err(ScriptRunError::ExitScript) => return Ok(()),
+            Err(e) => return Err(e),
+        };
         assert!(v.is_empty(), "script did not run to completion: {v:?}");
         Ok(())
     }
@@ -1139,6 +1148,7 @@ pub enum InternalCommand {
     UsingDir(ShellBit, bool),
     ChangeDir(ShellBit),
     Set(String, ShellBit),
+    ExitScript,
 }
 
 impl InternalCommand {
@@ -1259,6 +1269,11 @@ impl InternalCommand {
                 cwriteln!(context.stream());
 
                 Ok(None)
+            }
+            InternalCommand::ExitScript => {
+                cwriteln!(context.stream(), fg = Color::Yellow, "exiting script");
+                cwriteln!(context.stream());
+                Err(ScriptRunError::ExitScript)
             }
         }
     }

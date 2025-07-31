@@ -11,6 +11,7 @@ and this project adheres to
 ### Added
 ### Changed
 - **`pattern <regex>`**: The regular expression must now end with a semicolon
+- **`exit script`**: Added support for exiting a script early
 
 ## [0.1.29] - 2025-07-31
 

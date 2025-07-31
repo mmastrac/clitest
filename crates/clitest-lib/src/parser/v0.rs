@@ -702,6 +702,10 @@ fn parse_normalized_script_v0_commands(
                 )));
                 continue;
             }
+            if text == "exit" && args.len() == 1 && args[0] == "script" {
+                commands.push(ScriptBlock::InternalCommand(InternalCommand::ExitScript));
+                continue;
+            }
             return Err(ScriptError::new_with_data(
                 ScriptErrorType::InvalidInternalCommand,
                 location.clone(),

@@ -1,0 +1,5 @@
+#!/usr/bin/env clitest --v0
+
+exit script;
+
+$ echo "won't run!"

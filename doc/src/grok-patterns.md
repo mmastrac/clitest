@@ -27,7 +27,7 @@ Custom patterns are defined using the `pattern` command, after which the pattern
 are available for use in the tests.
 
 ```bash session
-pattern GREETING Hello|Goodbye
+pattern GREETING Hello|Goodbye;
 
 $ echo "[INFO] Hello, world!"
 ! [%{LOGLEVEL}] %{GREETING}, %{DATA}!

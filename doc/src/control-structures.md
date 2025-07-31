@@ -41,6 +41,16 @@ if TARGET_OS == "linux" {
 }
 ```
 
+This can also be used to exit the script early:
+
+```bash session
+if TARGET_OS == "windows" {
+    exit script;
+}
+
+# ... other commands ...
+```
+
 Note that pattern `if` blocks and control `if` blocks have identical syntax, but
 one contains patterns and the other contains commands.
 
@@ -110,4 +120,22 @@ retry {
     $ true
     %TIMEOUT 100ms
 }
+```
+
+## Early exit
+
+You can exit a script early using `exit script;`. This will cause the script to
+exit with a success status while skipping the remaining commands. This is useful
+for skipping a test if a prerequisite is not met.
+
+```bash session
+$ echo "will run"
+! will run
+
+if PREREQUISITE != "value" {
+    exit script;
+}
+
+$ echo "won't run!"
+! won't run!
 ```
