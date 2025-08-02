@@ -9,9 +9,10 @@ and this project adheres to
 ## Unreleased
 
 ### Added
+- **`exit script`**: Added support for exiting a script early
+- **`include <path>`**: Added support for including another script
 ### Changed
 - **`pattern <regex>`**: The regular expression must now end with a semicolon
-- **`exit script`**: Added support for exiting a script early
 
 ## [0.1.29] - 2025-07-31
 

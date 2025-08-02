@@ -139,3 +139,16 @@ if PREREQUISITE != "value" {
 $ echo "won't run!"
 ! won't run!
 ```
+
+## Include
+
+You can include a script into the current script using `include
+"path/to/script.cli";`.
+
+```bash session
+include "include/included.cli";
+```
+
+The included script is executed in the current script's context, so it can use
+the same variables and commands. The included script is treated as if it was a
+block in the outer script.

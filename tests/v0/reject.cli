@@ -2,8 +2,35 @@
 
 reject {
     ! Hello, world!
+    sequence {
+        ! a
+        ! b
+        ! c
+    }
 }
 
+
+# if true {
+#     # Rejects are global, this should escape the if block
+#     reject {
+#         ! Something else
+#     }
+# }
+
 $ printf "Hello, world!\n"
+%EXPECT_FAILURE
+*
+
+# This doesn't work yet because we don't treat preamble patterns as commands.
+
+# $ printf "Something else\n"
+# %EXPECT_FAILURE
+# *
+
+
+$ printf "a\nb\nnot c\n"
+*
+
+$ printf "a\nb\nc\n"
 %EXPECT_FAILURE
 *

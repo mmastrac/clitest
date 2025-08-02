@@ -1,0 +1,5 @@
+#!/usr/bin/env clitest --v0
+reject {
+    ! reject
+}
+set FROM_INCLUDED "from included";

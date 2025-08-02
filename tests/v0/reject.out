@@ -6,4 +6,20 @@ Hello, world!
 ---
 ✅ OK
 
+printf "a\nb\nnot c\n"
+---
+a
+b
+not c
+---
+✅ OK
+
+printf "a\nb\nc\n"
+---
+a
+b
+c
+---
+✅ OK
+
 <root>/reject.cli PASSED

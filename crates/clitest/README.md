@@ -58,6 +58,7 @@ commands and control structures.
 | Structure                 | Description                                            |
 | ------------------------- | ------------------------------------------------------ |
 | `# <comment>`             | Ignore this line during test execution                 |
+| `include <path>;`         | Include another script                                 |
 | `if condition { … }`      | Conditionally execute commands                         |
 | `for <var> in <…> { … }`  | Iterate over a list of values                          |
 | `background { … }`        | Run commands in background (auto-killed on exit)       |

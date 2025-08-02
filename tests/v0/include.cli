@@ -1,0 +1,11 @@
+#!/usr/bin/env clitest --v0
+
+include "include/included.cli";
+
+$ echo $FROM_INCLUDED
+! from included
+
+# This should escape the include block
+$ echo "reject"
+%EXPECT_FAILURE
+*

@@ -1,0 +1,17 @@
+Running <root>/include.cli ...
+
+set FROM_INCLUDED from included
+
+echo $FROM_INCLUDED
+---
+from included
+---
+✅ OK
+
+echo "reject"
+---
+reject
+---
+✅ OK
+
+<root>/include.cli PASSED

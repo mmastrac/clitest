@@ -99,6 +99,10 @@ impl NicePathBuf {
         std::fs::remove_dir_all(&self.path)
     }
 
+    pub fn parent(&self) -> Option<NicePathBuf> {
+        self.path.parent().map(NicePathBuf::new)
+    }
+
     pub fn cwd() -> NicePathBuf {
         let cwd = std::env::current_dir().expect("Couldn't get current directory");
         cwd.into()

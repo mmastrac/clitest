@@ -40,3 +40,14 @@ $ echo $VAR
 set VAR 'a\$b';
 $ echo $VAR
 ! a\$b
+
+set VAR "test";
+if true {
+    # This escapes the block
+    set VAR "test2";
+    $ echo $VAR
+    ! test2
+}
+
+$ echo $VAR
+! test2

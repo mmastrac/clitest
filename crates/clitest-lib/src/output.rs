@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use grok::Grok;
@@ -18,9 +18,20 @@ pub struct Line {
 pub struct Lines {
     lines: Arc<Vec<String>>,
     current_line: usize,
-    ignored_patterns: Vec<Arc<Vec<OutputPattern>>>,
+    ignored_patterns: OutputPatterns,
     negative_disabled: bool,
-    rejected_patterns: Vec<Arc<Vec<OutputPattern>>>,
+    rejected_patterns: OutputPatterns,
+}
+
+impl std::fmt::Debug for Lines {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Lines {{ ignored: {} pattern(s), rejected: {} pattern(s) }}",
+            self.ignored_patterns.len(),
+            self.rejected_patterns.len()
+        )
+    }
 }
 
 impl<'s> IntoIterator for &'s Lines {
@@ -61,27 +72,22 @@ impl Lines {
         'outer: while next.current_line < next.lines.len() {
             if !self.negative_disabled {
                 let ignore_check = next.without_negatives();
-                for ignored in &next.ignored_patterns {
-                    for ignored_pattern in ignored.iter() {
-                        if let Ok(next_next) =
-                            ignored_pattern.matches(context.ignore(), ignore_check.clone())
-                        {
-                            next = next_next.with_negatives();
-                            continue 'outer;
-                        }
+                for ignored_pattern in &*next.ignored_patterns {
+                    if let Ok(next_next) =
+                        ignored_pattern.matches(context.ignore(), ignore_check.clone())
+                    {
+                        next = next_next.with_negatives();
+                        continue 'outer;
                     }
                 }
-                for rejected in &next.rejected_patterns {
-                    for rejected_pattern in rejected.iter() {
-                        if let Ok(_) =
-                            rejected_pattern.matches(context.ignore(), ignore_check.clone())
-                        {
-                            return Err(OutputPatternMatchFailure {
-                                location: rejected_pattern.location.clone(),
-                                pattern_type: "reject",
-                                output_line: None,
-                            });
-                        }
+                for rejected_pattern in &*next.rejected_patterns {
+                    if let Ok(_) = rejected_pattern.matches(context.ignore(), ignore_check.clone())
+                    {
+                        return Err(OutputPatternMatchFailure {
+                            location: rejected_pattern.location.clone(),
+                            pattern_type: "reject",
+                            output_line: None,
+                        });
                     }
                 }
             }
@@ -95,18 +101,18 @@ impl Lines {
         Ok((None, next))
     }
 
-    pub fn with_ignore(&self, ignore: &Arc<Vec<OutputPattern>>) -> Self {
+    pub fn with_ignore(&self, ignore: &OutputPatterns) -> Self {
         let mut ignored_patterns = self.ignored_patterns.clone();
-        ignored_patterns.push(ignore.clone());
+        ignored_patterns.extend(&ignore);
         Self {
             ignored_patterns,
             ..self.clone()
         }
     }
 
-    pub fn with_reject(&self, reject: &Arc<Vec<OutputPattern>>) -> Self {
+    pub fn with_reject(&self, reject: &OutputPatterns) -> Self {
         let mut rejected_patterns = self.rejected_patterns.clone();
-        rejected_patterns.push(reject.clone());
+        rejected_patterns.extend(&reject);
         Self {
             rejected_patterns,
             ..self.clone()
@@ -136,12 +142,52 @@ impl Lines {
     }
 }
 
+#[derive(Clone, Default, Debug, Serialize)]
+
+pub struct OutputPatterns {
+    patterns: Arc<Vec<OutputPattern>>,
+}
+
+impl OutputPatterns {
+    pub fn new(patterns: Vec<OutputPattern>) -> Self {
+        Self {
+            patterns: Arc::new(patterns),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.patterns.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.patterns.len()
+    }
+
+    pub fn extend(&mut self, patterns: &OutputPatterns) {
+        if self.is_empty() {
+            self.patterns = patterns.patterns.clone();
+            return;
+        }
+        let new_patterns = std::mem::take(&mut self.patterns);
+        let mut new_patterns = Arc::unwrap_or_clone(new_patterns);
+        new_patterns.extend(patterns.patterns.iter().cloned());
+        self.patterns = Arc::new(new_patterns);
+    }
+}
+
+impl std::ops::Deref for OutputPatterns {
+    type Target = Vec<OutputPattern>;
+    fn deref(&self) -> &Self::Target {
+        &*self.patterns
+    }
+}
+
 #[derive(Clone)]
 pub struct OutputPattern {
     pub location: ScriptLocation,
     pub pattern: OutputPatternType,
-    pub ignore: Arc<Vec<OutputPattern>>,
-    pub reject: Arc<Vec<OutputPattern>>,
+    pub ignore: OutputPatterns,
+    pub reject: OutputPatterns,
 }
 
 impl Serialize for OutputPattern {
@@ -173,6 +219,48 @@ impl OutputPattern {
         }
     }
 
+    pub fn prepare(&self, grok: &Grok) -> Result<(), OutputPatternPrepareError> {
+        for pattern in &*self.ignore.patterns {
+            pattern.prepare(grok)?
+        }
+        for pattern in &*self.reject.patterns {
+            pattern.prepare(grok)?
+        }
+        match &self.pattern {
+            OutputPatternType::Pattern(pattern) => {
+                pattern
+                    .prepare(grok)
+                    .map_err(|e| OutputPatternPrepareError {
+                        location: self.location.clone(),
+                        pattern: pattern.pattern.clone(),
+                        error: e,
+                    })?
+            }
+            OutputPatternType::Sequence(patterns) => {
+                for pattern in patterns {
+                    pattern.prepare(grok)?;
+                }
+            }
+            OutputPatternType::Unordered(patterns) => {
+                for pattern in patterns {
+                    pattern.prepare(grok)?;
+                }
+            }
+            OutputPatternType::Choice(patterns) => {
+                for pattern in patterns {
+                    pattern.prepare(grok)?;
+                }
+            }
+            OutputPatternType::If(_, pattern) => pattern.prepare(grok)?,
+            OutputPatternType::Any(pattern) => pattern.prepare(grok)?,
+            OutputPatternType::Repeat(pattern) => pattern.prepare(grok)?,
+            OutputPatternType::Optional(pattern) => pattern.prepare(grok)?,
+            OutputPatternType::Literal(_) => {}
+            OutputPatternType::End | OutputPatternType::None => {}
+        }
+        Ok(())
+    }
+
     pub fn matches(
         &self,
         context: OutputMatchContext,
@@ -195,6 +283,14 @@ impl OutputPattern {
     pub fn max_matches(&self) -> usize {
         self.pattern.max_matches()
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("pattern {pattern} at line {location} failed to compile: {error}")]
+pub struct OutputPatternPrepareError {
+    pub location: ScriptLocation,
+    pub pattern: String,
+    pub error: grok::Error,
 }
 
 #[derive(Clone)]
@@ -359,58 +455,80 @@ impl std::fmt::Debug for OutputPatternType {
 pub struct GrokPattern {
     pattern: String,
     #[serde(skip)]
-    grok: grok::Pattern,
+    grok: OnceLock<grok::Pattern>,
 }
 
 impl GrokPattern {
-    pub fn compile(
-        grok: &mut Grok,
-        line: &str,
-        escape_non_grok: bool,
-    ) -> Result<Self, grok::Error> {
-        if escape_non_grok {
-            // Borrowed from grok crate
-            const GROK_PATTERN: &str = r"%\{(?<name>(?<pattern>[A-z0-9]+)(?::(?<alias>[A-z0-9_:;\/\s\.]+))?)(?:=(?<definition>(?:(?:[^{}]+|\.+)+)+))?\}";
-            let re = onig::Regex::new(GROK_PATTERN).expect("Failed to compile Grok metapattern");
-            let mut prev_start = 0;
-
-            // Escape the text between grok pattern matches to make it easier to write
-            // literals-with-grok patterns.
-            let mut escaped_string = String::with_capacity(line.len() * 2);
-            for re_match in re.find_iter(line) {
-                let text = &line[prev_start..re_match.0];
-                text.chars().for_each(|c| {
-                    if c.is_ascii() && !c.is_alphanumeric() {
-                        escaped_string.push('\\');
-                        escaped_string.push(c);
+    pub fn compile(line: &str, escape_non_grok: bool) -> Result<Self, String> {
+        use grok::parser::GrokPatternError;
+        let mut test_pattern = String::new();
+        let mut final_pattern = String::new();
+        for bit in grok::parser::grok_split(line) {
+            match bit {
+                grok::parser::GrokComponent::RegularExpression { string, .. } => {
+                    if escape_non_grok {
+                        for char in string.chars() {
+                            if char.is_ascii() && !char.is_alphanumeric() {
+                                test_pattern.push('\\');
+                                test_pattern.push(char);
+                                final_pattern.push('\\');
+                                final_pattern.push(char);
+                            } else {
+                                test_pattern.push(char);
+                                final_pattern.push(char);
+                            }
+                        }
                     } else {
-                        escaped_string.push(c);
+                        test_pattern.push_str(string);
+                        final_pattern.push_str(string);
                     }
-                });
-                escaped_string.push_str(&line[re_match.0..re_match.1]);
-                prev_start = re_match.1;
-            }
-            let text = &line[prev_start..];
-            text.chars().for_each(|c| {
-                if c.is_ascii() && !c.is_alphanumeric() {
-                    escaped_string.push('\\');
-                    escaped_string.push(c);
-                } else {
-                    escaped_string.push(c);
                 }
-            });
-            let eol = format!("{escaped_string}$");
-            Ok(Self {
-                pattern: escaped_string,
-                grok: grok.compile(&eol, false)?,
-            })
-        } else {
-            let eol = format!("{line}$");
-            Ok(Self {
-                pattern: line.to_string(),
-                grok: grok.compile(&eol, false)?,
-            })
+                grok::parser::GrokComponent::GrokPattern { pattern, .. } => {
+                    test_pattern.push_str(".");
+                    final_pattern.push_str(pattern);
+                }
+                grok::parser::GrokComponent::PatternError(GrokPatternError::InvalidCharacter(
+                    c,
+                )) => {
+                    return Err(format!("Invalid character in pattern: {:?}", c));
+                }
+                grok::parser::GrokComponent::PatternError(GrokPatternError::InvalidPattern) => {
+                    return Err("Invalid grok pattern".to_string());
+                }
+                grok::parser::GrokComponent::PatternError(
+                    GrokPatternError::InvalidPatternDefinition,
+                ) => {
+                    return Err("Invalid grok pattern definition".to_string());
+                }
+            }
         }
+
+        test_pattern.push('$');
+        final_pattern.push('$');
+
+        _ = Grok::empty()
+            .compile(&test_pattern, false)
+            .map_err(|e| e.to_string())?;
+
+        Ok(Self {
+            pattern: final_pattern,
+            grok: OnceLock::new(),
+        })
+    }
+
+    pub fn prepare(&self, grok: &Grok) -> Result<(), grok::Error> {
+        // This could technically suffer from multiple init, but they should
+        // always initialize the same way.
+        if self.grok.get().is_none() {
+            let pattern = grok.compile(&self.pattern, false)?;
+            self.grok.get_or_init(move || pattern);
+        }
+        Ok(())
+    }
+
+    pub fn matches<'a>(&'a self, text: &'a str) -> Option<grok::Matches<'a>> {
+        let pattern_ref = self.grok.get().expect("grok pattern not compiled");
+        return pattern_ref.match_against(text);
     }
 }
 
@@ -512,17 +630,7 @@ impl OutputPatternType {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
                     let text = line.text.clone();
-                    // Don't print panic backtraces
-                    let res = match std::panic::catch_unwind(|| pattern.grok.match_against(&text)) {
-                        Ok(res) => res,
-                        Err(_) => {
-                            return Err(OutputPatternMatchFailure {
-                                location: location.clone(),
-                                pattern_type: "pattern",
-                                output_line: Some(line),
-                            });
-                        }
-                    };
+                    let res = pattern.matches(&text);
                     if let Some(_matches) = res {
                         context.trace(&format!("pattern match: {:?} =~ {pattern:?}", line.text));
                         Ok(next)
