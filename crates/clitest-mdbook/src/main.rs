@@ -1,13 +1,15 @@
 use clap::{Arg, ArgMatches, Command};
 use clitest_lib::parser;
-use clitest_lib::script::{ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext};
+use clitest_lib::script::{Script, ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext};
 use mdbook::book::Book;
 use mdbook::errors::Error;
 use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
 use mdbook::BookItem;
 use semver::{Version, VersionReq};
+use std::collections::HashMap;
 use std::io;
 use std::process;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub fn make_app() -> Command {
@@ -61,7 +63,9 @@ impl Preprocessor for ClitestPreprocessor {
                             eprintln!("failed to parse script at {script_path:?}:{session_start}: {e:?}");
                             error = Some(e.into());
                         }
-                        Ok(script) => {
+                        Ok(mut script) => {
+                            // Hrad-code an include
+                            script.includes = Arc::new(HashMap::from_iter([("include/included.cli".to_string(), Script::new(ScriptFile::new("include/included.cli".to_string())))]));
                             let args = ScriptRunArgs {
                                 quiet: true,
                                 global_timeout: Some(Duration::from_secs(5)),

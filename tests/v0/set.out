@@ -53,4 +53,20 @@ a\$b
 ---
 ✅ OK
 
+set VAR test
+
+set VAR test2
+
+echo $VAR
+---
+test2
+---
+✅ OK
+
+echo $VAR
+---
+test2
+---
+✅ OK
+
 <root>/set.cli PASSED

@@ -39,7 +39,9 @@ impl std::fmt::Display for ScriptLocation {
     }
 }
 
-#[derive(derive_more::Debug, derive_more::Display, Clone, Serialize, PartialEq, Eq)]
+#[derive(
+    derive_more::Debug, derive_more::Display, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 #[display("{}", file)]
 pub struct ScriptFile {
     pub file: Arc<NicePathBuf>,
@@ -53,13 +55,17 @@ impl ScriptFile {
     }
 }
 
-#[derive(derive_more::Debug, Serialize)]
+impl<T: AsRef<Path>> From<T> for ScriptFile {
+    fn from(file: T) -> Self {
+        Self::new(file)
+    }
+}
+
+#[derive(Clone, derive_more::Debug, Serialize)]
 pub struct Script {
-    pub commands: Vec<ScriptBlock>,
+    pub commands: Arc<Vec<ScriptBlock>>,
+    pub includes: Arc<HashMap<String, Script>>,
     pub file: ScriptFile,
-    #[debug(skip)]
-    #[serde(skip)]
-    pub grok: Grok,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -187,14 +193,19 @@ enum ScriptMode {
 #[derive(derive_more::Debug)]
 pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
+    pub grok: Grok,
     timeout: Duration,
     env_vars: HashMap<String, String>,
+    includes: Arc<HashMap<String, Script>>,
     background: ScriptMode,
     #[debug(skip)]
     kill: ScriptKillReceiver,
     #[debug(skip)]
     kill_sender: ScriptKillSender,
     output: ScriptOutput,
+
+    global_ignore: OutputPatterns,
+    global_reject: OutputPatterns,
 }
 
 impl Default for ScriptRunContext {
@@ -202,12 +213,16 @@ impl Default for ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: ScriptRunArgs::default(),
+            grok: Grok::with_default_patterns(),
             timeout: DEFAULT_TIMEOUT,
             env_vars: HashMap::new(),
             background: ScriptMode::Normal,
+            includes: Arc::new(HashMap::new()),
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output: ScriptOutput::default(),
+            global_ignore: OutputPatterns::default(),
+            global_reject: OutputPatterns::default(),
         }
     }
 }
@@ -217,29 +232,37 @@ impl ScriptRunContext {
         let kill = Arc::new(AtomicBool::new(false));
         Self {
             args: self.args.clone(),
+            grok: self.grok.clone(),
             // Background processes are not subject to timeouts
             timeout: Duration::MAX,
             env_vars: self.env_vars.clone(),
             background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
+            includes: self.includes.clone(),
             output: if self.args.verbose {
                 self.output.clone()
             } else {
                 ScriptOutput::quiet(self.args.no_color)
             },
+            global_ignore: self.global_ignore.clone(),
+            global_reject: self.global_reject.clone(),
         }
     }
 
     pub fn new_deferred(&self) -> Self {
         Self {
             args: self.args.clone(),
+            grok: self.grok.clone(),
             timeout: self.timeout,
             env_vars: self.env_vars.clone(),
             background: ScriptMode::Deferred,
             kill: self.kill.clone(),
             kill_sender: self.kill_sender.clone(),
+            includes: self.includes.clone(),
             output: self.output.clone(),
+            global_ignore: self.global_ignore.clone(),
+            global_reject: self.global_reject.clone(),
         }
     }
 
@@ -600,10 +623,14 @@ impl ScriptRunContext {
             timeout: args.global_timeout.unwrap_or(DEFAULT_TIMEOUT),
             args,
             env_vars,
+            grok: Grok::with_default_patterns(),
+            includes: Arc::new(HashMap::new()),
             background: ScriptMode::Normal,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
             output,
+            global_ignore: OutputPatterns::default(),
+            global_reject: OutputPatterns::default(),
         }
     }
 }
@@ -747,7 +774,11 @@ pub enum ScriptRunError {
     #[error("{0}")]
     Pattern(#[from] OutputPatternMatchFailure),
     #[error("{0}")]
+    PatternPrepareError(#[from] OutputPatternPrepareError),
+    #[error("{0}")]
     Exit(CommandResult),
+    #[error("included file not found: {0}")]
+    IncludedFileNotFound(String),
     #[error("expected failure, but passed")]
     ExpectedFailure,
     #[error("{0}")]
@@ -770,6 +801,7 @@ impl ScriptRunError {
     pub fn short(&self) -> String {
         match self {
             Self::Pattern(_) => "Pattern".to_string(),
+            Self::PatternPrepareError(e) => format!("PatternPrepareError({:?})", e),
             Self::Exit(status) => format!("Exit({})", status),
             Self::ExpectedFailure => "ExpectedFailure".to_string(),
             Self::IO(e) => format!("IO({:?})", e.kind()),
@@ -778,13 +810,34 @@ impl ScriptRunError {
             Self::ExpansionError(e) => "ExpansionError".to_string(),
             Self::RetryTookTooLong => "RetryTookTooLong".to_string(),
             Self::ExitScript => unreachable!(),
+            Self::IncludedFileNotFound(path) => format!("IncludedFileNotFound({})", path),
         }
     }
 }
 
 impl Script {
+    pub fn new(file: ScriptFile) -> Self {
+        Self {
+            commands: Arc::new(vec![]),
+            includes: Arc::new(HashMap::new()),
+            file,
+        }
+    }
+
+    /// Collect all included script paths from the script.
+    pub fn includes(&self) -> Vec<(ScriptLocation, String)> {
+        self.commands
+            .iter()
+            .flat_map(|block| block.includes())
+            .collect()
+    }
+
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<(), ScriptRunError> {
-        let v = match ScriptBlock::run_blocks(context, &self.commands) {
+        let old_includes = context.includes.clone();
+        context.includes = self.includes.clone();
+        let res = ScriptBlock::run_blocks(context, &self.commands);
+        context.includes = old_includes;
+        let v = match res {
             Ok(v) => v,
             // Bypass normal script processing and exit successfully
             Err(ScriptRunError::ExitScript) => return Ok(()),
@@ -870,15 +923,34 @@ impl CommandExit {
 #[derive(derive_more::Debug)]
 pub enum ScriptBlock {
     Command(ScriptCommand),
-    InternalCommand(InternalCommand),
+    InternalCommand(ScriptLocation, InternalCommand),
     Background(Vec<ScriptBlock>),
     Defer(Vec<ScriptBlock>),
     If(IfCondition, Vec<ScriptBlock>),
     For(ForCondition, Vec<ScriptBlock>),
     Retry(Vec<ScriptBlock>),
+    GlobalIgnore(OutputPatterns),
+    GlobalReject(OutputPatterns),
 }
 
 impl ScriptBlock {
+    pub fn includes(&self) -> Vec<(ScriptLocation, String)> {
+        match self {
+            ScriptBlock::Command(..) => vec![],
+            ScriptBlock::InternalCommand(location, InternalCommand::Include(path)) => {
+                vec![(location.clone(), path.clone())]
+            }
+            ScriptBlock::InternalCommand(..) => vec![],
+            ScriptBlock::Background(blocks) => blocks.iter().flat_map(|b| b.includes()).collect(),
+            ScriptBlock::Defer(blocks) => blocks.iter().flat_map(|b| b.includes()).collect(),
+            ScriptBlock::If(_, blocks) => blocks.iter().flat_map(|b| b.includes()).collect(),
+            ScriptBlock::For(_, blocks) => blocks.iter().flat_map(|b| b.includes()).collect(),
+            ScriptBlock::Retry(blocks) => blocks.iter().flat_map(|b| b.includes()).collect(),
+            ScriptBlock::GlobalIgnore(_) => vec![],
+            ScriptBlock::GlobalReject(_) => vec![],
+        }
+    }
+
     pub fn run_blocks(
         context: &mut ScriptRunContext,
         blocks: &[ScriptBlock],
@@ -919,7 +991,7 @@ impl ScriptBlock {
                         // then rotating
                         defer_blocks.push_front(Deferred::Scripts(blocks));
                     }
-                    ScriptBlock::InternalCommand(command) => {
+                    ScriptBlock::InternalCommand(_, command) => {
                         if context.background == ScriptMode::Deferred {
                             cwrite!(context.stream(), dimmed = true, "(deferred) ");
                         }
@@ -1098,6 +1170,20 @@ impl ScriptBlock {
                     backoff *= 2;
                 }
             }
+            ScriptBlock::GlobalIgnore(patterns) => {
+                for pattern in patterns.iter() {
+                    pattern.prepare(&context.grok)?;
+                }
+                context.global_ignore.extend(patterns);
+                Ok(vec![])
+            }
+            ScriptBlock::GlobalReject(patterns) => {
+                for pattern in patterns.iter() {
+                    pattern.prepare(&context.grok)?;
+                }
+                context.global_reject.extend(patterns);
+                Ok(vec![])
+            }
             _ => unreachable!("Unexpected block type: {self:?}"),
         }
     }
@@ -1110,7 +1196,7 @@ impl Serialize for ScriptBlock {
     {
         match self {
             ScriptBlock::Command(command) => command.serialize(serializer),
-            ScriptBlock::InternalCommand(command) => command.serialize(serializer),
+            ScriptBlock::InternalCommand(_, command) => command.serialize(serializer),
             ScriptBlock::Background(blocks) => {
                 let mut ser = serializer.serialize_map(Some(1))?;
                 ser.serialize_entry("background", blocks)?;
@@ -1138,6 +1224,16 @@ impl Serialize for ScriptBlock {
                 ser.serialize_entry("retry", blocks)?;
                 ser.end()
             }
+            ScriptBlock::GlobalIgnore(patterns) => {
+                let mut ser = serializer.serialize_map(Some(1))?;
+                ser.serialize_entry("ignore", patterns)?;
+                ser.end()
+            }
+            ScriptBlock::GlobalReject(patterns) => {
+                let mut ser = serializer.serialize_map(Some(1))?;
+                ser.serialize_entry("reject", patterns)?;
+                ser.end()
+            }
         }
     }
 }
@@ -1148,7 +1244,9 @@ pub enum InternalCommand {
     UsingDir(ShellBit, bool),
     ChangeDir(ShellBit),
     Set(String, ShellBit),
+    Include(String),
     ExitScript,
+    Pattern(String, String),
 }
 
 impl InternalCommand {
@@ -1160,6 +1258,17 @@ impl InternalCommand {
         ScriptRunError,
     > {
         match self.clone() {
+            InternalCommand::Include(path) => {
+                let Some(script) = context.includes.get(&path) else {
+                    return Err(ScriptRunError::IncludedFileNotFound(path));
+                };
+                script.clone().run(context)?;
+                Ok(None)
+            }
+            InternalCommand::Pattern(name, pattern) => {
+                context.grok.add_pattern(name, pattern);
+                Ok(None)
+            }
             InternalCommand::UsingTempdir => {
                 let current_pwd = context.pwd();
                 let tempdir = NiceTempDir::new();
@@ -1412,7 +1521,11 @@ impl ScriptCommand {
         }
 
         let match_context = OutputMatchContext::new(context);
-        let pattern_result = match self.pattern.matches(match_context.clone(), output.clone()) {
+        self.pattern.prepare(&context.grok)?;
+        let prepared_output = output
+            .with_ignore(&context.global_ignore)
+            .with_reject(&context.global_reject);
+        let pattern_result = match self.pattern.matches(match_context.clone(), prepared_output) {
             Ok(_) => {
                 if self.expect_failure {
                     PatternResult::ExpectedFailure
@@ -1617,7 +1730,7 @@ repeat {
 "#;
 
         let script = parse_script(ScriptFile::new("test.cli"), script)?;
-        assert_eq!(script.commands.len(), 2);
+        assert_eq!(script.commands.len(), 3);
         eprintln!("{:?}", script);
         Ok(())
     }

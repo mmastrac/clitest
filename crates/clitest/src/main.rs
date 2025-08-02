@@ -7,8 +7,9 @@ use termcolor::Color;
 use clitest_lib::script::ScriptOutput;
 use clitest_lib::*;
 
-use parser::parse_script;
-use script::{Script, ScriptFile, ScriptRunArgs};
+use script::ScriptRunArgs;
+
+use crate::parser::parse_script_files;
 #[derive(Parser, Debug, Clone, Copy, ValueEnum)]
 enum DumpFormat {
     Json,
@@ -64,41 +65,22 @@ struct Args {
     v0: bool,
 }
 
-struct ScriptToRun {
-    original_path: ScriptFile,
-    script: Script,
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let script_files = args
-        .scripts
-        .iter()
-        .map(|path| {
-            let script_file = ScriptFile::new(path.clone());
-            let script = parse_script(script_file.clone(), &std::fs::read_to_string(path)?)?;
-            Ok(ScriptToRun {
-                original_path: script_file.clone(),
-                script,
-            })
-        })
-        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>();
-
-    let script_files = match script_files {
-        Ok(s) => s,
+    let script_files = match parse_script_files(&args.scripts) {
+        Ok(script_files) => script_files,
         Err(e) => {
-            cprint!(fg = Color::Red, "Error:");
-            cprintln!(" {e}");
+            cprintln!(fg = Color::Red, bold = true, "Errors:");
+            for e in e {
+                cprintln!(fg = Color::Red, " {e}");
+            }
             std::process::exit(1);
         }
     };
 
     if let Some(format) = args.dump {
-        let s = script_files
-            .into_iter()
-            .map(|s| s.script)
-            .collect::<Vec<_>>();
+        let s = script_files.scripts;
         match format {
             DumpFormat::Json => {
                 cprintln!(
@@ -127,9 +109,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut failed = 0;
-    let total = script_files.len();
+    let total = script_files.scripts.len();
 
-    for script in script_files {
+    for (script_file, script) in script_files.scripts {
         let args = ScriptRunArgs {
             delay_steps: args.delay_steps,
             ignore_exit_codes: args.ignore_exit_codes,
@@ -145,8 +127,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if args.quiet {
             cprint!("Running ");
-            cprint!(fg = Color::Cyan, "{} ... ", script.original_path);
-            match script.script.run_with_args(args, ScriptOutput::quiet(true)) {
+            cprint!(fg = Color::Cyan, "{} ... ", script_file);
+            match script.run_with_args(args, ScriptOutput::quiet(true)) {
                 Ok(_) => cprintln!(fg = Color::Green, "OK"),
                 Err(e) => {
                     cprintln!(fg = Color::Red, "FAILED");
@@ -155,11 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cprintln!("{e}");
                 }
             }
-        } else if script
-            .script
-            .run_with_args(args, ScriptOutput::default())
-            .is_err()
-        {
+        } else if script.run_with_args(args, ScriptOutput::default()).is_err() {
             failed += 1;
         }
     }

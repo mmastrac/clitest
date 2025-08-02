@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use clitest_lib::{
     cprint, cprintln, cprintln_rule,
-    parser::parse_script,
+    parser::parse_script_file,
     script::{ScriptFile, ScriptOutput, ScriptRunArgs},
     term::Color,
     util::NicePathBuf,
@@ -39,7 +39,7 @@ pub fn run() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
 
-        let script = parse_script(ScriptFile::new(&test.path), &test.content).unwrap();
+        let script = parse_script_file(None, ScriptFile::new(&test.path)).unwrap();
         total += 1;
         let args = ScriptRunArgs {
             quiet: true,
@@ -65,7 +65,7 @@ pub fn run() {
         } else if let Err(e) = res {
             cprint!(fg = Color::Red, "❌ FAIL");
             failed += 1;
-            cprint!(fg = Color::Red, "{}", e);
+            cprint!(fg = Color::Red, " {}", e);
             failed_tests.push(test);
         } else {
             cprint!(fg = Color::Green, "✅ OK");
@@ -84,7 +84,7 @@ pub fn run() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprintln!(" ... ");
         cprintln_rule!();
-        let script = parse_script(ScriptFile::new(test.path.clone()), &test.content).unwrap();
+        let script = parse_script_file(None, ScriptFile::new(test.path.clone())).unwrap();
         let args = ScriptRunArgs {
             show_line_numbers: true,
             ..Default::default()
