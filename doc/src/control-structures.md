@@ -142,11 +142,23 @@ $ echo "won't run!"
 
 ## Include
 
-You can include a script into the current script using `include
+You can include another script into the current script using `include
 "path/to/script.cli";`.
 
 ```bash session
 include "include/included.cli";
+```
+
+```bash session
+# included.cli
+
+# These patterns and variables are available in the outer script
+pattern MY_PATTERN [abcd]+;
+set VARIABLE "value"
+
+# This is run at the time the script is included
+$ echo "run in included script"
+! run in included script
 ```
 
 The included script is executed in the current script's context, so it can use

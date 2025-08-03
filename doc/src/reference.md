@@ -35,6 +35,7 @@ commands and control structures.
 | Structure                 | Description                                            | Location                                                           |
 | ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
 | `# <comment>`             | Ignore this line during test execution                 | [Control Structures](./control-structures.md#comments)             |
+| `include "path/to/script.cli";` | Include a script into the current script | [Control Structures](./control-structures.md#include) |
 | `if condition { … }`      | Conditionally execute commands or patterns             | [Control Structures](./control-structures.md#conditional-blocks)   |
 | `for <var> in <…> { … }`  | Iterate over a list of values                          | [Control Structures](./control-structures.md#for-loops)            |
 | `background { … }`        | Run commands in background (auto-killed on exit)       | [Control Structures](./control-structures.md#background-processes) |
