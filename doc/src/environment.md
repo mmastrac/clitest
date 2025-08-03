@@ -1,6 +1,6 @@
 # Environment and Variables
 
-clitest provides powerful features for managing environment variables and working directories.
+*CLI/test* provides powerful features for managing environment variables and working directories.
 
 ## Setting Variables
 

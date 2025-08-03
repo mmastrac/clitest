@@ -1,6 +1,6 @@
 # Introduction
 
-`clitest` is a new kind of CLI testing tool that allows you to write tests for
+*CLI/test* is a new kind of CLI testing tool that allows you to write tests for
 command-line applications using a simple syntax. It was born from the
 frustration with existing shell testing approaches.
 
@@ -28,9 +28,9 @@ $ echo "Hello, world!"
 - Cleanup
 - Retry logic
 
-## Why clitest?
+## Why *CLI/test*?
 
-`clitest` makes it easy to write and maintain tests for command-line
+*CLI/test* makes it easy to write and maintain tests for command-line
 applications. Its syntax is designed to be concise, human-readable, and
 powerful, allowing you to express complex test scenarios without extra noise.
 

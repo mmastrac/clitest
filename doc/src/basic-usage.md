@@ -65,7 +65,7 @@ $ echo "Hello World"
 
 ## Exit Codes
 
-By default, clitest expects commands to exit with code 0. You can specify a different expected exit code using `%EXIT`:
+By default, *CLI/test* expects commands to exit with code 0. You can specify a different expected exit code using `%EXIT`:
 
 ```bash session
 $ exit 1

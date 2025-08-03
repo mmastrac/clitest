@@ -4,7 +4,7 @@ license = "MIT/Apache-2.0"
 version.workspace = true
 authors = ["Matt Mastracci <matthew@mastracci.com>"]
 edition = "2024"
-description = "CLI-based testing."
+description = "CLI/test: A literate CLI testing tool"
 repository = "https://github.com/mmastrac/clitest"
 readme = "README.md"
 

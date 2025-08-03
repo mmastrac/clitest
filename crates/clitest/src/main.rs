@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use clap::{Parser, ValueEnum};
+use clap::{CommandFactory, Parser, ValueEnum};
 use std::{path::PathBuf, time::Duration};
 use termcolor::Color;
 
@@ -67,6 +67,12 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    if args.scripts.is_empty() {
+        let mut builder = Args::command();
+        _ = builder.print_help();
+        std::process::exit(1);
+    }
 
     let script_files = match parse_script_files(&args.scripts) {
         Ok(script_files) => script_files,

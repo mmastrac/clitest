@@ -1,6 +1,6 @@
 # Control Structures
 
-`clitest` provides several control structures to help you write complex test scenarios.
+*CLI/test* provides several control structures to help you write complex test scenarios.
 
 ## Quoting
 

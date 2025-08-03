@@ -1,6 +1,6 @@
 # Pattern Matching
 
-clitest provides two main types of pattern matching: auto-escaped patterns (`!`)
+*CLI/test* provides two main types of pattern matching: auto-escaped patterns (`!`)
 and raw patterns (`?`). Each has its own use cases and syntax.
 
 ## Auto-escaped Patterns (`!`)

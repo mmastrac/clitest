@@ -1,6 +1,6 @@
 # Advanced Features
 
-This chapter covers advanced features and best practices for using clitest effectively.
+This chapter covers advanced features and best practices for using *CLI/test* effectively.
 
 ## Complex Pattern Matching
 

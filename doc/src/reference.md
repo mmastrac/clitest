@@ -1,6 +1,6 @@
 # Reference
 
-This reference provides a overview of all clitest syntax elements organized by
+This reference provides a overview of all *CLI/test* syntax elements organized by
 category.
 
 ## Command Execution

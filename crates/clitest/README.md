@@ -1,4 +1,4 @@
-# `clitest`: A literate CLI testing tool
+# *CLI/test*: A literate CLI testing tool
 
 [![Build](https://img.shields.io/github/actions/workflow/status/mmastrac/clitest/build.yml?branch=master)](https://github.com/mmastrac/clitest/actions/workflows/build.yml)
 [![Book](https://img.shields.io/badge/book-online-blue)](https://mmastrac.github.io/clitest/)
@@ -41,7 +41,7 @@ The test files use the following syntax:
 
 ### Variables and Quoting
 
-clitest uses shell-style variable references and quoting to delimit strings in
+*CLI/test* uses shell-style variable references and quoting to delimit strings in
 commands and control structures.
 
 | Quote Type | Behavior                                              |
@@ -96,7 +96,7 @@ commands and control structures.
 
 ### Common Grok Patterns
 
-This is a subset of the grok patterns supported by clitest. See the full list of
+This is a subset of the grok patterns supported by *CLI/test*. See the full list of
 supported patterns at <https://docs.rs/grok/latest/grok/patterns/index.html>,
 including the full base patterns in the `grok` module:
 <https://docs.rs/grok/latest/grok/patterns/grok/index.html>.
