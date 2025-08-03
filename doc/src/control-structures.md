@@ -154,7 +154,7 @@ include "include/included.cli";
 
 # These patterns and variables are available in the outer script
 pattern MY_PATTERN [abcd]+;
-set VARIABLE "value"
+set VARIABLE "value";
 
 # This is run at the time the script is included
 $ echo "run in included script"
