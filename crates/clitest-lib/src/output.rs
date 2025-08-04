@@ -454,6 +454,7 @@ impl std::fmt::Debug for OutputPatternType {
 #[debug("/{pattern:?}/")]
 pub struct GrokPattern {
     pattern: String,
+    aliases: Vec<String>,
     #[serde(skip)]
     grok: OnceLock<grok::Pattern>,
 }
@@ -463,6 +464,7 @@ impl GrokPattern {
         use grok::parser::GrokPatternError;
         let mut test_pattern = String::new();
         let mut final_pattern = String::new();
+        let mut aliases = vec![];
         for bit in grok::parser::grok_split(line) {
             match bit {
                 grok::parser::GrokComponent::RegularExpression { string, .. } => {
@@ -483,9 +485,12 @@ impl GrokPattern {
                         final_pattern.push_str(string);
                     }
                 }
-                grok::parser::GrokComponent::GrokPattern { pattern, .. } => {
+                grok::parser::GrokComponent::GrokPattern { pattern, alias, .. } => {
                     test_pattern.push_str(".");
                     final_pattern.push_str(pattern);
+                    if !alias.is_empty() {
+                        aliases.push(alias.to_string());
+                    }
                 }
                 grok::parser::GrokComponent::PatternError(GrokPatternError::InvalidCharacter(
                     c,
@@ -512,6 +517,7 @@ impl GrokPattern {
 
         Ok(Self {
             pattern: final_pattern,
+            aliases,
             grok: OnceLock::new(),
         })
     }
@@ -545,6 +551,7 @@ pub struct OutputMatchContext<'s> {
     depth: usize,
     trace: Arc<Mutex<Vec<String>>>,
     ignore: bool,
+    expectations: Arc<Mutex<HashMap<String, String>>>,
     script_context: &'s ScriptRunContext,
 }
 
@@ -555,6 +562,7 @@ impl<'s> OutputMatchContext<'s> {
             trace: Default::default(),
             ignore: false,
             script_context,
+            expectations: Default::default(),
         }
     }
 
@@ -564,6 +572,7 @@ impl<'s> OutputMatchContext<'s> {
             trace: self.trace.clone(),
             ignore: self.ignore,
             script_context: self.script_context,
+            expectations: self.expectations.clone(),
         }
     }
 
@@ -573,6 +582,7 @@ impl<'s> OutputMatchContext<'s> {
             trace: self.trace.clone(),
             ignore: true,
             script_context: self.script_context,
+            expectations: self.expectations.clone(),
         }
     }
 
@@ -588,6 +598,17 @@ impl<'s> OutputMatchContext<'s> {
 
     pub fn traces(&self) -> Vec<String> {
         std::mem::take(&mut self.trace.lock().unwrap())
+    }
+
+    pub fn expect(&self, key: &str, value: String) {
+        self.expectations
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), value);
+    }
+
+    pub fn expects(&self) -> HashMap<String, String> {
+        self.expectations.lock().unwrap().clone()
     }
 }
 
@@ -631,7 +652,28 @@ impl OutputPatternType {
                 if let Some(line) = line {
                     let text = line.text.clone();
                     let res = pattern.matches(&text);
-                    if let Some(_matches) = res {
+                    if let Some(matches) = res {
+                        for alias in &pattern.aliases {
+                            if let Some(value) = matches.get(&alias) {
+                                let existing = context
+                                    .expectations
+                                    .lock()
+                                    .unwrap()
+                                    .insert(alias.clone(), value.to_string());
+                                if let Some(existing) = existing {
+                                    if existing != value {
+                                        context.trace(&format!(
+                                            "pattern alias FAILED match: {existing:?} != {value:?}",
+                                        ));
+                                        return Err(OutputPatternMatchFailure {
+                                            location: location.clone(),
+                                            pattern_type: "pattern",
+                                            output_line: Some(line),
+                                        });
+                                    }
+                                }
+                            }
+                        }
                         context.trace(&format!("pattern match: {:?} =~ {pattern:?}", line.text));
                         Ok(next)
                     } else {

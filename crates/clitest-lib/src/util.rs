@@ -371,9 +371,10 @@ fn write_debug_path(f: &mut std::fmt::Formatter<'_>, path: &Path) -> std::fmt::R
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, derive_more::Error, derive_more::Display)]
 pub enum ShellParseError {
-    UnmatchedQuote(char),
+    #[display("unmatched quote ({_0})")]
+    UnmatchedQuote(#[error(not(source))] char),
 }
 
 /// A single bit of a shell-ish string.

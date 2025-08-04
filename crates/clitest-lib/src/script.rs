@@ -82,6 +82,198 @@ pub struct ScriptRunArgs {
     pub no_color: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ScriptEnv {
+    env_vars: HashMap<String, String>,
+}
+
+impl ScriptEnv {
+    pub fn set_defaults(&mut self, pwd: impl AsRef<Path>) {
+        macro_rules! target {
+            ($env:ident, $var:ident, [$($vals:expr),*]) => {
+                $(
+                if cfg!($var = $vals) {
+                    self.env_vars.insert(stringify!($env).to_string(), $vals.to_string());
+                }
+                )*
+            };
+        }
+
+        target!(
+            TARGET_OS,
+            target_os,
+            ["windows", "linux", "macos", "ios", "android"]
+        );
+        target!(TARGET_FAMILY, target_family, ["windows", "unix", "wasm"]);
+        target!(
+            TARGET_ARCH,
+            target_arch,
+            ["x86", "x86_64", "arm", "aarch64"]
+        );
+
+        // Set the current working directory as a special variable "PWD"
+        self.env_vars.insert(
+            "PWD".to_string(),
+            NicePathBuf::from(pwd.as_ref()).env_string(),
+        );
+        // Save the initial PWD as INITIAL_PWD so it can easily be restored
+        self.env_vars
+            .insert("INITIAL_PWD".to_string(), self.env_vars["PWD"].clone());
+    }
+
+    pub fn pwd(&self) -> NicePathBuf {
+        self.env_vars
+            .get("PWD")
+            .cloned()
+            .map(NicePathBuf::from)
+            .unwrap_or_else(NicePathBuf::cwd)
+    }
+
+    pub fn get_env(&self, name: &str) -> Option<&str> {
+        self.env_vars.get(name).map(|s| s.as_str())
+    }
+
+    pub fn set_env(&mut self, name: impl Into<String>, value: impl Into<String>) {
+        let name = name.into();
+        if name == "PWD" {
+            self.set_pwd(value.into());
+        } else {
+            self.env_vars.insert(name, value.into());
+        }
+    }
+
+    pub fn set_pwd(&mut self, pwd: impl Into<NicePathBuf>) {
+        let pwd = pwd.into().env_string();
+        self.env_vars.insert("PWD".to_string(), pwd);
+    }
+
+    pub fn expand(&self, value: &ShellBit) -> Result<String, ScriptRunError> {
+        match value {
+            ShellBit::Literal(s) => Ok(s.clone()),
+            ShellBit::Quoted(s) => self.expand_str(s),
+        }
+    }
+
+    /// Perform shell expansion on a string.
+    pub fn expand_str(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
+        enum State {
+            Normal,
+            EscapeNext,
+            InCurly,
+            Dollar,
+            InDollar,
+        }
+
+        let value = value.as_ref();
+
+        // "\" triggers escaping
+        // ${A} expands to the value of A
+        // $A expands to the value of A (variable ends on first non-alphanumeric character)
+
+        let mut state = State::Normal;
+        let mut variable = String::new();
+        let mut expanded = String::new();
+
+        for c in value.chars() {
+            match state {
+                State::Normal => {
+                    if c == '$' {
+                        state = State::Dollar;
+                        continue;
+                    }
+                    if c == '\\' {
+                        state = State::EscapeNext;
+                        continue;
+                    }
+                    expanded.push(c);
+                }
+                State::EscapeNext => {
+                    expanded.push(c);
+                    state = State::Normal;
+                }
+                State::InCurly => {
+                    if c == '}' {
+                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
+                            expanded.push_str(value);
+                        } else {
+                            return Err(ScriptRunError::ExpansionError(format!(
+                                "undefined variable in ${{...}}: {:?} (in {value:?})",
+                                variable
+                            )));
+                        }
+                        state = State::Normal;
+                    } else {
+                        variable.push(c);
+                    }
+                }
+                State::Dollar => {
+                    if c.is_alphanumeric() || c == '_' {
+                        state = State::InDollar;
+                        variable.push(c);
+                    } else if c == '{' {
+                        state = State::InCurly;
+                    } else {
+                        return Err(ScriptRunError::ExpansionError(format!(
+                            "invalid variable: {:?} (in {value:?})",
+                            c
+                        )));
+                    }
+                }
+                State::InDollar => {
+                    if c.is_alphanumeric() || c == '_' {
+                        variable.push(c);
+                    } else {
+                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
+                            expanded.push_str(value);
+                        } else {
+                            return Err(ScriptRunError::ExpansionError(format!(
+                                "undefined variable in $...: {:?} (in {value:?})",
+                                variable
+                            )));
+                        }
+                        expanded.push(c);
+                        state = State::Normal;
+                    }
+                }
+            }
+        }
+        match state {
+            State::InDollar => {
+                if let Some(value) = self.get_env(&variable) {
+                    expanded.push_str(value);
+                } else {
+                    return Err(ScriptRunError::ExpansionError(format!(
+                        "undefined variable: {}",
+                        variable
+                    )));
+                }
+            }
+            State::Dollar => {
+                return Err(ScriptRunError::ExpansionError(
+                    "incomplete variable".to_string(),
+                ));
+            }
+            State::InCurly => {
+                return Err(ScriptRunError::ExpansionError(format!(
+                    "unclosed variable: {}",
+                    variable
+                )));
+            }
+            State::Normal => {}
+            State::EscapeNext => {
+                return Err(ScriptRunError::ExpansionError(
+                    "unclosed backslash".to_string(),
+                ));
+            }
+        }
+        Ok(expanded)
+    }
+
+    pub fn env_vars(&self) -> &HashMap<String, String> {
+        &self.env_vars
+    }
+}
+
 #[derive(derive_more::Debug, Clone)]
 pub struct ScriptOutput {
     #[debug(skip)]
@@ -195,7 +387,7 @@ pub struct ScriptRunContext {
     pub args: ScriptRunArgs,
     pub grok: Grok,
     timeout: Duration,
-    env_vars: HashMap<String, String>,
+    env: ScriptEnv,
     includes: Arc<HashMap<String, Script>>,
     background: ScriptMode,
     #[debug(skip)]
@@ -215,7 +407,7 @@ impl Default for ScriptRunContext {
             args: ScriptRunArgs::default(),
             grok: Grok::with_default_patterns(),
             timeout: DEFAULT_TIMEOUT,
-            env_vars: HashMap::new(),
+            env: ScriptEnv::default(),
             background: ScriptMode::Normal,
             includes: Arc::new(HashMap::new()),
             kill: ScriptKillReceiver::new(kill.clone()),
@@ -235,7 +427,7 @@ impl ScriptRunContext {
             grok: self.grok.clone(),
             // Background processes are not subject to timeouts
             timeout: Duration::MAX,
-            env_vars: self.env_vars.clone(),
+            env: self.env.clone(),
             background: ScriptMode::Background,
             kill: ScriptKillReceiver::new(kill.clone()),
             kill_sender: ScriptKillSender::new(kill.clone()),
@@ -255,7 +447,7 @@ impl ScriptRunContext {
             args: self.args.clone(),
             grok: self.grok.clone(),
             timeout: self.timeout,
-            env_vars: self.env_vars.clone(),
+            env: self.env.clone(),
             background: ScriptMode::Deferred,
             kill: self.kill.clone(),
             kill_sender: self.kill_sender.clone(),
@@ -267,29 +459,19 @@ impl ScriptRunContext {
     }
 
     pub fn pwd(&self) -> NicePathBuf {
-        self.env_vars
-            .get("PWD")
-            .cloned()
-            .map(NicePathBuf::from)
-            .unwrap_or_else(NicePathBuf::cwd)
+        self.env.pwd()
     }
 
     pub fn get_env(&self, name: &str) -> Option<&str> {
-        self.env_vars.get(name).map(|s| s.as_str())
+        self.env.get_env(name)
     }
 
     pub fn set_env(&mut self, name: impl Into<String>, value: impl Into<String>) {
-        let name = name.into();
-        if name == "PWD" {
-            self.set_pwd(value.into());
-        } else {
-            self.env_vars.insert(name, value.into());
-        }
+        self.env.set_env(name, value);
     }
 
     pub fn set_pwd(&mut self, pwd: impl Into<NicePathBuf>) {
-        let pwd = pwd.into().env_string();
-        self.env_vars.insert("PWD".to_string(), pwd);
+        self.env.set_pwd(pwd);
     }
 
     pub fn take_output(self) -> String {
@@ -297,125 +479,7 @@ impl ScriptRunContext {
     }
 
     fn expand(&self, value: &ShellBit) -> Result<String, ScriptRunError> {
-        match value {
-            ShellBit::Literal(s) => Ok(s.clone()),
-            ShellBit::Quoted(s) => self.expand_str(s),
-        }
-    }
-
-    /// Perform shell expansion on a string.
-    fn expand_str(&self, value: impl AsRef<str>) -> Result<String, ScriptRunError> {
-        enum State {
-            Normal,
-            EscapeNext,
-            InCurly,
-            Dollar,
-            InDollar,
-        }
-
-        let value = value.as_ref();
-
-        // "\" triggers escaping
-        // ${A} expands to the value of A
-        // $A expands to the value of A (variable ends on first non-alphanumeric character)
-
-        let mut state = State::Normal;
-        let mut variable = String::new();
-        let mut expanded = String::new();
-
-        for c in value.chars() {
-            match state {
-                State::Normal => {
-                    if c == '$' {
-                        state = State::Dollar;
-                        continue;
-                    }
-                    if c == '\\' {
-                        state = State::EscapeNext;
-                        continue;
-                    }
-                    expanded.push(c);
-                }
-                State::EscapeNext => {
-                    expanded.push(c);
-                    state = State::Normal;
-                }
-                State::InCurly => {
-                    if c == '}' {
-                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
-                            expanded.push_str(value);
-                        } else {
-                            return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in ${{...}}: {:?} (in {value:?})",
-                                variable
-                            )));
-                        }
-                        state = State::Normal;
-                    } else {
-                        variable.push(c);
-                    }
-                }
-                State::Dollar => {
-                    if c.is_alphanumeric() || c == '_' {
-                        state = State::InDollar;
-                        variable.push(c);
-                    } else if c == '{' {
-                        state = State::InCurly;
-                    } else {
-                        return Err(ScriptRunError::ExpansionError(format!(
-                            "invalid variable: {:?} (in {value:?})",
-                            c
-                        )));
-                    }
-                }
-                State::InDollar => {
-                    if c.is_alphanumeric() || c == '_' {
-                        variable.push(c);
-                    } else {
-                        if let Some(value) = self.get_env(&std::mem::take(&mut variable)) {
-                            expanded.push_str(value);
-                        } else {
-                            return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in $...: {:?} (in {value:?})",
-                                variable
-                            )));
-                        }
-                        expanded.push(c);
-                        state = State::Normal;
-                    }
-                }
-            }
-        }
-        match state {
-            State::InDollar => {
-                if let Some(value) = self.get_env(&variable) {
-                    expanded.push_str(value);
-                } else {
-                    return Err(ScriptRunError::ExpansionError(format!(
-                        "undefined variable: {}",
-                        variable
-                    )));
-                }
-            }
-            State::Dollar => {
-                return Err(ScriptRunError::ExpansionError(
-                    "incomplete variable".to_string(),
-                ));
-            }
-            State::InCurly => {
-                return Err(ScriptRunError::ExpansionError(format!(
-                    "unclosed variable: {}",
-                    variable
-                )));
-            }
-            State::Normal => {}
-            State::EscapeNext => {
-                return Err(ScriptRunError::ExpansionError(
-                    "unclosed backslash".to_string(),
-                ));
-            }
-        }
-        Ok(expanded)
+        self.env.expand(value)
     }
 
     /// Get a mutable reference to the output stream.
@@ -585,44 +649,15 @@ impl ScriptKillSender {
 
 impl ScriptRunContext {
     pub fn new(args: ScriptRunArgs, script_path: impl AsRef<Path>, output: ScriptOutput) -> Self {
-        let mut env_vars = HashMap::new();
-
-        macro_rules! target {
-            ($env:ident, $var:ident, [$($vals:expr),*]) => {
-                $(
-                if cfg!($var = $vals) {
-                    env_vars.insert(stringify!($env).to_string(), $vals.to_string());
-                }
-                )*
-            };
-        }
-
-        target!(
-            TARGET_OS,
-            target_os,
-            ["windows", "linux", "macos", "ios", "android"]
-        );
-        target!(TARGET_FAMILY, target_family, ["windows", "unix", "wasm"]);
-        target!(
-            TARGET_ARCH,
-            target_arch,
-            ["x86", "x86_64", "arm", "aarch64"]
-        );
-
-        // Set the current working directory as a special variable "PWD"
-        env_vars.insert(
-            "PWD".to_string(),
-            NicePathBuf::from(script_path.as_ref().parent().unwrap()).env_string(),
-        );
-        // Save the initial PWD as INITIAL_PWD so it can easily be restored
-        env_vars.insert("INITIAL_PWD".to_string(), env_vars["PWD"].clone());
+        let mut env = ScriptEnv::default();
+        env.set_defaults(script_path.as_ref().parent().unwrap());
 
         let kill = Arc::new(AtomicBool::new(false));
 
         Self {
             timeout: args.global_timeout.unwrap_or(DEFAULT_TIMEOUT),
             args,
-            env_vars,
+            env,
             grok: Grok::with_default_patterns(),
             includes: Arc::new(HashMap::new()),
             background: ScriptMode::Normal,
@@ -1471,17 +1506,48 @@ fn is_bool_false(b: &bool) -> bool {
 pub struct ScriptCommand {
     pub command: CommandLine,
     pub pattern: OutputPattern,
+
     #[serde(skip_serializing_if = "CommandExit::is_success")]
     pub exit: CommandExit,
+
     #[serde(skip_serializing_if = "is_bool_false")]
     pub expect_failure: bool,
+
+    /// Single set variable (entire command output trimmed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub set_var: Option<String>,
+
+    /// Specific set variables
+    pub set_vars: HashMap<String, ShellBit>,
+
+    /// Specific command timeout
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<Duration>,
+
+    /// Input grok expectations
+    pub expect: HashMap<String, ShellBit>,
 }
 
 impl ScriptCommand {
+    pub fn new(command: CommandLine) -> Self {
+        let location = command.location.clone();
+        Self {
+            command,
+            pattern: OutputPattern {
+                pattern: OutputPatternType::None,
+                ignore: Default::default(),
+                reject: Default::default(),
+                location,
+            },
+            exit: Default::default(),
+            timeout: None,
+            expect_failure: false,
+            set_var: None,
+            set_vars: Default::default(),
+            expect: Default::default(),
+        }
+    }
+
     pub fn run(&self, context: &mut ScriptRunContext) -> Result<ScriptResult, ScriptRunError> {
         let command = &self.command;
         let args = &context.args;
@@ -1504,7 +1570,7 @@ impl ScriptCommand {
             context.args.show_line_numbers,
             context.args.runner.clone(),
             self.timeout.unwrap_or(context.timeout),
-            &context.env_vars,
+            context.env.env_vars(),
             &context.kill,
             &context.kill_sender,
         )?;
@@ -1521,12 +1587,23 @@ impl ScriptCommand {
         }
 
         let match_context = OutputMatchContext::new(context);
+        for (key, value) in &self.expect {
+            match_context.expect(key, context.expand(value)?);
+        }
         self.pattern.prepare(&context.grok)?;
         let prepared_output = output
             .with_ignore(&context.global_ignore)
             .with_reject(&context.global_reject);
         let pattern_result = match self.pattern.matches(match_context.clone(), prepared_output) {
             Ok(_) => {
+                let mut env = context.env.clone();
+                for (key, value) in match_context.expects() {
+                    env.set_env(key, value);
+                }
+                for (key, value) in &self.set_vars {
+                    context.set_env(key, env.expand(value)?);
+                }
+
                 if self.expect_failure {
                     PatternResult::ExpectedFailure
                 } else {
@@ -1754,11 +1831,7 @@ $ cmd &
 
     #[test]
     fn test_script_run_context_expand() {
-        let mut context = ScriptRunContext::new(
-            ScriptRunArgs::default(),
-            Path::new("."),
-            ScriptOutput::default(),
-        );
+        let mut context = ScriptEnv::default();
         context.set_env("A", "1");
         context.set_env("B", "2");
         context.set_env("C", "3");

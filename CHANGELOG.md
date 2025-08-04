@@ -6,30 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-08-04
+
+### Added
+- Literal blocks (triple double-quote, ie: `"""`): Added support for triple double-quote literal blocks
+- (MAJOR) Grok captures: Added support for grok captures, extraction to variables
+  ```bash session
+  # All grok captures of "word" must match!
+
+  $ echo "Hello, world!\nGoodbye, world!"
+  # Expect a grok capture as an environment variable
+  %SET CAPTURED_WORD ${word}
+  ! Hello, %{WORD:word}!
+  ! Goodbye, %{WORD:word}!
+
+  $ echo "Hello, world!\nGoodbye, Earth!"
+  # Import an environment variable as a grok capture requirement
+  %EXPECT word "$CAPTURED_WORD"
+  %EXPECT_FAILURE
+  ! Hello, %{WORD:word}!
+  ! Goodbye, %{WORD:word}!
+  ```
+
 ## [0.1.30] - 2025-08-02
 
 ### Added
-- **`exit script`**: Added support for exiting a script early
-- **`include <path>`**: Added support for including another script
+- `exit script`: Added support for exiting a script early
+- `include <path>`: Added support for including another script
 ### Changed
-- **`pattern <regex>`**: The regular expression must now end with a semicolon
+- `pattern <regex>`: The regular expression must now end with a semicolon
 
 ## [0.1.29] - 2025-07-31
 
 ### Changed
 
 - Updated dependencies to latest versions
-- **`%EXIT fail`**: Added support for expecting command failures
+- `%EXIT fail`: Added support for expecting command failures
 
 ## [0.1.28] - 2025-06-25
 
 ### Added
 
-- **`%TIMEOUT` directive**: Added support for setting command timeouts with
+- `%TIMEOUT` directive: Added support for setting command timeouts with
   duration suffixes (s, ms, us, etc.)
-- **Execution time display**: Commands now show their execution times in output
-- **Enhanced documentation**: Added comprehensive grok patterns documentation
-- **Improved timeout handling**: Better timeout management and error reporting
+- Commands now show their execution times in output
+- Added comprehensive grok patterns documentation
+- Better timeout management and error reporting
 
 ### Changed
 
@@ -47,10 +69,9 @@ and this project adheres to
 
 ### Added
 
-- **`%TIMEOUT` directive**: Initial implementation of timeout functionality
-- **Execution time tracking**: Commands now display their execution duration
-- **Enhanced timeout support**: Better integration with command execution
-  pipeline
+- `%TIMEOUT` directive: Initial implementation of timeout functionality
+- Commands now display their execution duration
+- Better integration with command execution pipeline
 
 ### Changed
 
@@ -62,13 +83,12 @@ and this project adheres to
 
 ### Added
 
-- **`retry` blocks**: Added `retry { ... }` functionality for retrying commands
+- `retry` blocks: Added `retry { ... }` functionality for retrying commands
   until success
-- **Internal commands**: Added various internal commands for enhanced
+- Added various internal commands for enhanced
   functionality
-- **Glob support**: Added glob patterns to test file matching
-- **Enhanced whitespace handling**: Improved handling of whitespace in triple
-  blocks
+- Added glob patterns to test file matching
+- Improved handling of whitespace in triple blocks
 
 ### Changed
 
@@ -79,8 +99,7 @@ and this project adheres to
 
 ### Added
 
-- **Versioned parser**: Implemented versioned parsing system for better
-  compatibility
+- Implemented versioned parsing system for better compatibility
 
 ### Changed
 
@@ -91,20 +110,20 @@ and this project adheres to
 
 ### Fixed
 
-- **Platform-specific fixes**: Fixed tests on macOS and other platforms
-- **Build system**: Multiple build fixes and improvements
-- **PWD handling**: Fixed working directory handling issues
-- **`background` block reliability**: Improved reliability of `background { }`
+- Fixed tests on macOS and other platforms
+- Multiple build fixes and improvements
+- `PWD` handling: Fixed working directory handling issues
+- `background` block reliability: Improved reliability of `background { }`
   execution
 
 ### Changed
 
-- **MSRV**: Reverted minimum supported Rust version to 1.85
-- **Documentation**: Updated README to point to the book and trimmed content
-- **Project structure**: Created mdbook.yml for documentation
+- Reverted minimum supported Rust version to 1.85
+- Updated README to point to the book and trimmed content
+- Created mdbook.yml for documentation
 
 ## [0.1.0] - 2025-06-08
 
 ### Added
 
-- **Initial release**: First public release of clitest
+- Initial release: First public release of clitest

@@ -31,7 +31,7 @@ $ printf "  X  \n"
 
 ## Grok Patterns
 
-clitest supports [grok patterns](./grok-patterns.md) for flexible matching:
+*CLI/test* supports [grok patterns](./grok-patterns.md) for flexible matching:
 
 ```bash session
 $ echo "Hello, anything"

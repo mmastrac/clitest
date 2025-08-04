@@ -47,12 +47,28 @@ $ echo "[DEBUG] Hello, world!"
 ! [%{MY_WORD=(\w+)}] %{MY_WORD}, %{MY_WORD}!
 ```
 
-Patterns may have named outputs. This feature is supported, but you cannot use
-the named outputs for any other purpose yet.
+## Expectations and Aliases
+
+By default, patterns don't have aliases and may match any value. If any patterns
+are given aliases (eg: `%{PATTERN:alias}), all values of those aliases must
+match throughout the entire test output.
+
+You can use the `%EXPECT` command to expect a specific value for a given alias.
+If no initial value is provided, the value is taken from the first match.
 
 ```bash session
 $ echo "[DEBUG] Hello, world!"
+%EXPECT word1 "DEBUG"
+%EXPECT word2 "Hello"
+%EXPECT word3 "world"
 ! [%{MY_WORD:word1=(\w+)}] %{MY_WORD:word2}, %{MY_WORD:word3}!
+```
+
+```bash session
+$ printf "line\nline\nline\n"
+! %{WORD:word}
+! %{WORD:word}
+! %{WORD:word}
 ```
 
 ## References
