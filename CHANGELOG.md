@@ -9,7 +9,8 @@ and this project adheres to
 ## [0.2.0] - 2025-08-04
 
 ### Added
-- Literal blocks (triple double-quote, ie: `"""`): Added support for triple double-quote literal blocks
+- Literal blocks: Added support for triple double-quote literal blocks (triple
+  double-quote, ie: `"""`)
 - (MAJOR) Grok captures: Added support for grok captures, extraction to variables
   ```bash session
   # All grok captures of "word" must match!

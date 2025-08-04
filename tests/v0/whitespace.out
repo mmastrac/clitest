@@ -62,4 +62,12 @@ def
 ---
 ✅ OK
 
+printf "abc\n\ndef\n"
+---
+abc
+
+def
+---
+✅ OK
+
 <root>/whitespace.cli PASSED

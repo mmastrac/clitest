@@ -58,7 +58,8 @@ commands and control structures.
 | `! <text>`                           | Auto-escaped pattern (literal text matching + grok patterns) | [Pattern Matching](./pattern-matching.md#auto-escaped-patterns)   |
 | `? <pattern>`                        | Raw pattern (regex-style, requires escaping + grok patterns) | [Pattern Matching](./pattern-matching.md#raw-patterns)            |
 | `!!!`                                | Multi-line auto-escaped pattern block                        | [Pattern Matching](./pattern-matching.md#auto-escaped-multi-line) |
-| `???`                                | Multi-line raw pattern block                                 | [Pattern Matching](./pattern-matching.md#raw-multi-line)          |
+| `???`                                | Multi-line raw pattern block                                 | [Pattern Matching](./pattern-matching.md#literal-multi-line) |
+| `"""`                                | Multi-line literal block                                     | [Pattern Matching](./pattern-matching.md#raw-multi-line)          |
 | `*`                                  | Any pattern (matches any number of lines lazily)             | [Pattern Matching](./pattern-matching.md#any-pattern)             |
 | `%{PATTERN_NAME}`                    | Standard grok pattern                                        | [Grok Patterns](./grok-patterns.md#syntax)                        |
 | `%{PATTERN_NAME=(regex)}`            | Custom grok pattern with regex                               | [Grok Patterns](./grok-patterns.md#syntax)                        |

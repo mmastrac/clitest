@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::parser::v0::segment::ScriptV0Block;
+use crate::parser::v0::{ESCAPED_MULTILINE, LITERAL_MULTILINE, REGEX_MULTILINE};
 use crate::script::*;
 use crate::util::ShellBit;
 use crate::{output::*, util::shell_split};
@@ -225,11 +226,11 @@ fn parse_script_v0_segment(
             let mut pattern = block.lines.as_slice();
             while let Some((line, rest)) = pattern.split_first() {
                 pattern = rest;
-                if line.text() == "!!!" {
-                    let indent = line.text_untrimmed().find("!!!").unwrap();
+                if line.text() == ESCAPED_MULTILINE {
+                    let indent = line.text_untrimmed().find(ESCAPED_MULTILINE).unwrap();
                     while let Some((line, rest)) = pattern.split_first() {
                         pattern = rest;
-                        if line.text() == "!!!" {
+                        if line.text() == ESCAPED_MULTILINE {
                             break;
                         } else {
                             builder.patterns.push(parse_pattern_line(
@@ -239,17 +240,31 @@ fn parse_script_v0_segment(
                             )?);
                         }
                     }
-                } else if line.text() == "???" {
-                    let indent = line.text_untrimmed().find("???").unwrap();
+                } else if line.text() == REGEX_MULTILINE {
+                    let indent = line.text_untrimmed().find(REGEX_MULTILINE).unwrap();
                     while let Some((line, rest)) = pattern.split_first() {
                         pattern = rest;
-                        if line.text() == "???" {
+                        if line.text() == REGEX_MULTILINE {
                             break;
                         } else {
                             builder.patterns.push(parse_pattern_line(
                                 line.location.clone(),
                                 &line.text_untrimmed()[indent.min(line.text_untrimmed().len())..],
                                 '?',
+                            )?);
+                        }
+                    }
+                } else if line.text() == LITERAL_MULTILINE {
+                    let indent = line.text_untrimmed().find(LITERAL_MULTILINE).unwrap();
+                    while let Some((line, rest)) = pattern.split_first() {
+                        pattern = rest;
+                        if line.text() == LITERAL_MULTILINE {
+                            break;
+                        } else {
+                            builder.patterns.push(parse_pattern_line(
+                                line.location.clone(),
+                                &line.text_untrimmed()[indent.min(line.text_untrimmed().len())..],
+                                '"',
                             )?);
                         }
                     }
@@ -420,9 +435,9 @@ fn parse_pattern_line(
     text: &str,
     line_start: char,
 ) -> Result<OutputPattern, ScriptError> {
-    if text.is_empty() {
+    if text.is_empty() || line_start == '"' {
         return Ok(OutputPattern {
-            pattern: OutputPatternType::Literal("".to_string()),
+            pattern: OutputPatternType::Literal(text.to_string()),
             ignore: Default::default(),
             reject: Default::default(),
             location,

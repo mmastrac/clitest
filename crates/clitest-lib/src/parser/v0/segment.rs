@@ -1,4 +1,7 @@
 use crate::command::CommandLine;
+use crate::parser::v0::ESCAPED_MULTILINE;
+use crate::parser::v0::LITERAL_MULTILINE;
+use crate::parser::v0::REGEX_MULTILINE;
 use crate::script::*;
 use crate::util::ShellBit;
 use crate::util::shell_split;
@@ -258,10 +261,12 @@ pub fn segment_script(
             if line.text() == terminator {
                 multiline_terminator = None;
             }
-        } else if line.text() == "!!!" {
-            multiline_terminator = Some("!!!");
-        } else if line.text() == "???" {
-            multiline_terminator = Some("???");
+        } else if line.text() == ESCAPED_MULTILINE {
+            multiline_terminator = Some(ESCAPED_MULTILINE);
+        } else if line.text() == REGEX_MULTILINE {
+            multiline_terminator = Some(REGEX_MULTILINE);
+        } else if line.text() == LITERAL_MULTILINE {
+            multiline_terminator = Some(LITERAL_MULTILINE);
         }
 
         if multiline_terminator.is_some() {
