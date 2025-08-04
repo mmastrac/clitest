@@ -1,6 +1,6 @@
 Running <root>/capture.cli ...
 
-echo "Hello, world!\nGoodbye, world!"
+echo "Hello, world!"; echo "Goodbye, world!"
 ---
 Hello, world!
 Goodbye, world!
