@@ -19,7 +19,7 @@ Hello, Earth!
 ---
 ✅ OK
 
-echo "Hello, $CAPTURED_WORD!\nGoodbye, Earth!"
+echo "Hello, $CAPTURED_WORD!"; echo "Goodbye, Earth!"
 ---
 Hello, world!
 Goodbye, Earth!
