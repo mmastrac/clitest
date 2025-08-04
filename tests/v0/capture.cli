@@ -16,7 +16,7 @@ $ echo "Hello, Earth!"
 %EXPECT_FAILURE
 ! Hello, %{WORD:word}!
 
-$ echo "Hello, $CAPTURED_WORD!\nGoodbye, Earth!"
+$ echo "Hello, $CAPTURED_WORD!"; echo "Goodbye, Earth!"
 # Import an environment variable as a grok capture requirement
 %EXPECT word "$CAPTURED_WORD"
 %EXPECT_FAILURE
