@@ -3,10 +3,10 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.30" # Update versions below as well
+version = "0.2.0" # Update versions below as well
 
 [workspace.dependencies]
-clitest-lib = { path = "crates/clitest-lib", version = "=0.1.30" }
+clitest-lib = { path = "crates/clitest-lib", version = "=0.2.0" }
 
 clap = "4.5.42"
 derive-io = "=0.5.0"
