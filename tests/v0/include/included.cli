@@ -1,5 +1,9 @@
 #!/usr/bin/env clitest --v0
+pattern HELLO hello;
+
 reject {
     ! reject
+    ! %{HELLO}
 }
+
 set FROM_INCLUDED "from included";

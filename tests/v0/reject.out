@@ -22,4 +22,16 @@ c
 ---
 ✅ OK
 
+printf "fails"
+---
+fails
+---
+✅ OK
+
+printf "fails"
+---
+fails
+---
+✅ OK
+
 <root>/reject.cli PASSED
