@@ -90,7 +90,7 @@ Literal multi-line blocks are similar to the other raw multi-line blocks, but
 they treat all text as literal text.
 
 ```bash session
-$ printf "We can match things that look grok-like:\n%{GROKLIKE}\n"
+$ printf "We can match things that look grok-like:\n%%{GROKLIKE}\n"
 """
 We can match things that look grok-like:
 %{GROKLIKE}
