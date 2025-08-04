@@ -27,10 +27,20 @@ $ printf "Hello, world!\n"
 # %EXPECT_FAILURE
 # *
 
-
 $ printf "a\nb\nnot c\n"
 *
 
 $ printf "a\nb\nc\n"
 %EXPECT_FAILURE
 *
+
+$ printf "fails"
+%EXPECT_FAILURE
+reject {
+    ! fails
+}
+*
+
+# The previous rejection was scoped to that command
+$ printf "fails"
+! fails

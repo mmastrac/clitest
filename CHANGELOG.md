@@ -28,7 +28,9 @@ and this project adheres to
   ! Hello, %{WORD:word}!
   ! Goodbye, %{WORD:word}!
   ```
-
+### Fixed
+ - `pattern`: Fixed bug where pattern could not appear before global `reject`/`ignore`
+ 
 ## [0.1.30] - 2025-08-02
 
 ### Added

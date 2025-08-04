@@ -62,11 +62,6 @@ fn parse_normalized_script_v0_commands(
     }
 
     while let Some((command, remaining)) = segments.split_first() {
-        debug_assert!(
-            command.is_command_block(),
-            "not a command block: {command:?}"
-        );
-
         if let ScriptV0Segment::SubBlock(_, block_type, args, sub_segments) = command {
             let blocks = parse_normalized_script_v0_commands(sub_segments)?;
 
@@ -92,6 +87,19 @@ fn parse_normalized_script_v0_commands(
                 commands.push(ScriptBlock::Retry(blocks));
             } else if block_type == "defer" {
                 commands.push(ScriptBlock::Defer(blocks));
+            } else if block_type == "ignore" {
+                // NOTE: These can exist in the preamble as well.
+                let builder = parse_script_v0_segments(sub_segments)?;
+                commands.push(ScriptBlock::GlobalIgnore(OutputPatterns::new(
+                    builder.patterns,
+                )));
+            } else if block_type == "reject" {
+                // NOTE: These can exist in the preamble as well.
+                let builder = parse_script_v0_segments(sub_segments)?;
+                commands.push(ScriptBlock::GlobalReject(OutputPatterns::new(
+                    builder.patterns,
+                )));
+            } else if block_type == "pattern" {
             } else {
                 return Err(ScriptError::new_with_data(
                     ScriptErrorType::InvalidBlockType,

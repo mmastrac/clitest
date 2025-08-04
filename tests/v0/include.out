@@ -14,4 +14,10 @@ reject
 ---
 ✅ OK
 
+echo "hello"
+---
+hello
+---
+✅ OK
+
 <root>/include.cli PASSED
