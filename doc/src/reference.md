@@ -1,20 +1,22 @@
 # Reference
 
-This reference provides a overview of all *CLI/test* syntax elements organized by
-category.
+This reference provides a overview of all _CLI/test_ syntax elements organized
+by category.
 
 ## Command Execution
 
-| Command               | Description                                   | Location                                                       |
-| --------------------- | --------------------------------------------- | -------------------------------------------------------------- |
-| `$ <command> …`       | Execute a shell command and match its output  | [Basic Usage](./basic-usage.md#executing-commands)             |
-| `%EXIT <n>`           | Expect command to exit with specific code n   | [Basic Usage](./basic-usage.md#exit-codes)                     |
-| `%EXIT fail`          | Expect command to exit with any non-zero code | [Basic Usage](./basic-usage.md#exit-codes)                     |
-| `%EXIT any`           | Accept any exit code (including timeouts)     | [Basic Usage](./basic-usage.md#exit-codes)                     |
-| `%EXIT timeout`       | Expect command to timeout                     | [Advanced Features](./advanced-features.md#timeouts)           |
-| `%TIMEOUT <duration>` | Set timeout for a command (e.g., 100ms, 5s)   | [Advanced Features](./advanced-features.md#timeouts)           |
-| `%SET <variable>`     | Capture command output into a variable        | [Environment](./environment.md#using-set)                      |
-| `%EXPECT_FAILURE`     | Expect pattern matching to fail               | [Advanced Features](./advanced-features.md#expecting-failures) |
+| Command                     | Description                                   | Location                                                       |
+| --------------------------- | --------------------------------------------- | -------------------------------------------------------------- |
+| `$ <command> …`             | Execute a shell command and match its output  | [Basic Usage](./basic-usage.md#executing-commands)             |
+| `%EXIT <n>`                 | Expect command to exit with specific code n   | [Basic Usage](./basic-usage.md#exit-codes)                     |
+| `%EXIT fail`                | Expect command to exit with any non-zero code | [Basic Usage](./basic-usage.md#exit-codes)                     |
+| `%EXIT any`                 | Accept any exit code (including timeouts)     | [Basic Usage](./basic-usage.md#exit-codes)                     |
+| `%EXIT timeout`             | Expect command to timeout                     | [Advanced Features](./advanced-features.md#timeouts)           |
+| `%TIMEOUT <duration>`       | Set timeout for a command (e.g., 100ms, 5s)   | [Advanced Features](./advanced-features.md#timeouts)           |
+| `%SET <variable>`           | Capture full command output into a variable   | [Environment](./environment.md#using-set)                      |
+| `%SET <variable> <pattern>` | Capture grok captures into a variable         | [Environment](./environment.md#using-set)                      |
+| `%EXPECT <alias> <value>`   | Expect a grok capture to match a value        | [Grok Patterns](./grok-patterns.md#expectations-and-aliases)   |
+| `%EXPECT_FAILURE`           | Expect pattern matching to fail               | [Advanced Features](./advanced-features.md#expecting-failures) |
 
 ## Variables and Quoting
 
@@ -32,22 +34,22 @@ commands and control structures.
 
 ## Control Structures
 
-| Structure                 | Description                                            | Location                                                           |
-| ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
-| `# <comment>`             | Ignore this line during test execution                 | [Control Structures](./control-structures.md#comments)             |
-| `include "path/to/script.cli";` | Include a script into the current script | [Control Structures](./control-structures.md#include) |
-| `if condition { … }`      | Conditionally execute commands or patterns             | [Control Structures](./control-structures.md#conditional-blocks)   |
-| `for <var> in <…> { … }`  | Iterate over a list of values                          | [Control Structures](./control-structures.md#for-loops)            |
-| `background { … }`        | Run commands in background (auto-killed on exit)       | [Control Structures](./control-structures.md#background-processes) |
-| `defer { … }`             | Execute cleanup commands after block ends (LIFO order) | [Control Structures](./control-structures.md#deferred-cleanup)     |
-| `retry { … }`             | Retry commands until success or timeout                | [Control Structures](./control-structures.md#retry)                |
-| `exit script;`            | Exit script early with success status                  | [Control Structures](./control-structures.md#early-exit)           |
-| `set <var> <value>;`      | Set environment variable directly                      | [Environment](./environment.md#using-set)                          |
-| `cd <directory>;`         | Change working directory                               | [Environment](./environment.md#changing-directory)                 |
-| `using tempdir;`          | Create and use temporary directory (auto-deleted)      | [Environment](./environment.md#using-temporary-directories)        |
-| `using new dir <name>;`   | Create new directory for testing (auto-deleted)        | [Environment](./environment.md#creating-new-directories)           |
-| `using dir <path>;`       | Use existing directory (not deleted)                   | [Environment](./environment.md#using-existing-directories)         |
-| `pattern <NAME> <regex>;` | Define custom grok pattern                             | [Grok Patterns](./grok-patterns.md#examples)                       |
+| Structure                       | Description                                            | Location                                                           |
+| ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ |
+| `# <comment>`                   | Ignore this line during test execution                 | [Control Structures](./control-structures.md#comments)             |
+| `include "path/to/script.cli";` | Include a script into the current script               | [Control Structures](./control-structures.md#include)              |
+| `if condition { … }`            | Conditionally execute commands or patterns             | [Control Structures](./control-structures.md#conditional-blocks)   |
+| `for <var> in <…> { … }`        | Iterate over a list of values                          | [Control Structures](./control-structures.md#for-loops)            |
+| `background { … }`              | Run commands in background (auto-killed on exit)       | [Control Structures](./control-structures.md#background-processes) |
+| `defer { … }`                   | Execute cleanup commands after block ends (LIFO order) | [Control Structures](./control-structures.md#deferred-cleanup)     |
+| `retry { … }`                   | Retry commands until success or timeout                | [Control Structures](./control-structures.md#retry)                |
+| `exit script;`                  | Exit script early with success status                  | [Control Structures](./control-structures.md#early-exit)           |
+| `set <var> <value>;`            | Set environment variable directly                      | [Environment](./environment.md#using-set)                          |
+| `cd <directory>;`               | Change working directory                               | [Environment](./environment.md#changing-directory)                 |
+| `using tempdir;`                | Create and use temporary directory (auto-deleted)      | [Environment](./environment.md#using-temporary-directories)        |
+| `using new dir <name>;`         | Create new directory for testing (auto-deleted)        | [Environment](./environment.md#creating-new-directories)           |
+| `using dir <path>;`             | Use existing directory (not deleted)                   | [Environment](./environment.md#using-existing-directories)         |
+| `pattern <NAME> <regex>;`       | Define custom grok pattern                             | [Grok Patterns](./grok-patterns.md#examples)                       |
 
 ## Patterns
 

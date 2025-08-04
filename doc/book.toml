@@ -2,7 +2,7 @@
 authors = ["Matt Mastracci"]
 language = "en"
 src = "src"
-title = "clitest Documentation"
+title = "CLI/test Documentation"
 
 [preprocessor.clitest]
 

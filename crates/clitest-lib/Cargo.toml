@@ -14,7 +14,7 @@ shellish_parse.workspace = true
 thiserror.workspace = true
 grok.workspace = true
 onig.workspace = true
-derive_more = { workspace = true, features = ["display", "debug", "is_variant", "unwrap"] }
+derive_more = { workspace = true, features = ["display", "debug", "error", "is_variant", "unwrap"] }
 termcolor.workspace = true
 termsize.workspace = true
 serde = { workspace = true, features = ["derive", "rc"] }

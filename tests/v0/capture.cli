@@ -1,0 +1,24 @@
+#!/usr/bin/env clitest --v0
+
+# All grok captures of "word" must match
+$ echo "Hello, world!\nGoodbye, world!"
+# Expect a grok capture as an environment variable
+%SET CAPTURED_WORD ${word}
+! Hello, %{WORD:word}!
+! Goodbye, %{WORD:word}!
+
+$ echo "Hello, world!"
+%EXPECT word "$CAPTURED_WORD"
+! Hello, %{WORD:word}!
+
+$ echo "Hello, Earth!"
+%EXPECT word "$CAPTURED_WORD"
+%EXPECT_FAILURE
+! Hello, %{WORD:word}!
+
+$ echo "Hello, $CAPTURED_WORD!\nGoodbye, Earth!"
+# Import an environment variable as a grok capture requirement
+%EXPECT word "$CAPTURED_WORD"
+%EXPECT_FAILURE
+! Hello, %{WORD:word}!
+! Goodbye, %{WORD:word}!

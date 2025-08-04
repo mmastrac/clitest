@@ -1,0 +1,29 @@
+Running <root>/capture.cli ...
+
+echo "Hello, world!\nGoodbye, world!"
+---
+Hello, world!
+Goodbye, world!
+---
+✅ OK
+
+echo "Hello, world!"
+---
+Hello, world!
+---
+✅ OK
+
+echo "Hello, Earth!"
+---
+Hello, Earth!
+---
+✅ OK
+
+echo "Hello, $CAPTURED_WORD!\nGoodbye, Earth!"
+---
+Hello, world!
+Goodbye, Earth!
+---
+✅ OK
+
+<root>/capture.cli PASSED

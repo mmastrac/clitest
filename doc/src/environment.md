@@ -6,12 +6,26 @@
 
 ### Using `%SET`
 
-Capture command output into a variable:
+`%SET` can be used to capture all or part of the command output into a variable.
+
+Capture the entire command output into a variable:
 
 ```bash session
 $ printf "value\n"
 %SET MY_VAR
 *
+```
+
+You can also capture one or more grok captures into a variable. The value will
+be contructed from the grok captures and existing environment variables:
+
+```bash session
+$ echo "Hello, world!"
+%SET CAPTURED_GREETING "${greeting} ${word}"
+! %{WORD:greeting}, %{WORD:word}!
+
+$ echo "$CAPTURED_GREETING"
+! Hello world
 ```
 
 ### Using `set`

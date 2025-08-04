@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::output::*;
+use crate::parser::v0::segment::ScriptV0Block;
 use crate::script::*;
 use crate::util::ShellBit;
+use crate::{output::*, util::shell_split};
 
 use super::segment::{ScriptV0Segment, normalize_segments, segment_script};
 
@@ -176,70 +177,16 @@ fn parse_normalized_script_v0_commands(
         (pattern, segments) = remaining.split_at(next_command);
 
         let location = command.location().clone();
-        let mut command = ScriptCommand {
-            command: match command {
-                ScriptV0Segment::Block(block) => block.block_type.clone().unwrap_command(),
-                _ => unreachable!(),
-            },
-            pattern: OutputPattern {
-                pattern: OutputPatternType::None,
-                ignore: Default::default(),
-                reject: Default::default(),
-                location: location.clone(),
-            },
-            exit: CommandExit::Success,
-            timeout: None,
-            expect_failure: false,
-            set_var: None,
-        };
+        let mut command = ScriptCommand::new(match command {
+            ScriptV0Segment::Block(block) => block.block_type.clone().unwrap_command(),
+            _ => unreachable!(),
+        });
 
-        if let Some(ScriptV0Segment::Block(maybe_meta)) = pattern.first() {
-            if maybe_meta.block_type.is_meta() {
-                pattern = pattern.split_first().unwrap().1;
-
-                for line in maybe_meta.lines.iter() {
-                    if line.starts_with("%SET") {
-                        if let Some(var) = line.text()[4..].split_whitespace().next() {
-                            command.set_var = Some(var.to_string());
-                        } else {
-                            return Err(ScriptError::new(
-                                ScriptErrorType::InvalidSetVariable,
-                                line.location.clone(),
-                            ));
-                        }
-                    } else if line.starts_with("%EXPECT_FAILURE") {
-                        command.expect_failure = true;
-                    } else if line.starts_with("%EXIT any") {
-                        command.exit = CommandExit::Any;
-                    } else if line.starts_with("%EXIT fail") {
-                        command.exit = CommandExit::AnyFailure;
-                    } else if line.starts_with("%EXIT timeout") {
-                        command.exit = CommandExit::Timeout;
-                    } else if line.starts_with("%EXIT ") {
-                        if let Ok(status) = line.text()[6..].parse::<i32>() {
-                            command.exit = CommandExit::Failure(status);
-                        } else {
-                            return Err(ScriptError::new(
-                                ScriptErrorType::InvalidExitStatus,
-                                line.location.clone(),
-                            ));
-                        }
-                    } else if line.starts_with("%TIMEOUT ") {
-                        if let Ok(timeout) = humantime::parse_duration(&line.text()[9..]) {
-                            command.timeout = Some(timeout);
-                        } else {
-                            return Err(ScriptError::new(
-                                ScriptErrorType::InvalidMetaCommand,
-                                line.location.clone(),
-                            ));
-                        }
-                    } else {
-                        return Err(ScriptError::new_with_data(
-                            ScriptErrorType::InvalidMetaCommand,
-                            line.location.clone(),
-                            format!("{line:?}"),
-                        ));
-                    }
+        if let Some(maybe_meta) = pattern.first() {
+            if let ScriptV0Segment::Block(block) = maybe_meta {
+                if block.block_type.is_meta() {
+                    pattern = pattern.split_first().unwrap().1;
+                    parse_script_v0_meta(block, &mut command)?;
                 }
             }
         }
@@ -529,6 +476,125 @@ fn parse_pattern_line(
     } else {
         unreachable!("Invalid line start: {line_start}");
     }
+}
+
+fn parse_script_v0_meta(
+    meta_block: &ScriptV0Block,
+    command: &mut ScriptCommand,
+) -> Result<(), ScriptError> {
+    for line in meta_block.lines.iter() {
+        let Some(meta_text) = line.text().strip_prefix('%') else {
+            continue;
+        };
+        let words = shell_split(meta_text).map_err(|e| {
+            ScriptError::new_with_data(
+                ScriptErrorType::InvalidMetaCommand,
+                line.location.clone(),
+                format!("{e}: {line}", line = line.text()),
+            )
+        })?;
+
+        if words.is_empty() {
+            return Err(ScriptError::new(
+                ScriptErrorType::InvalidMetaCommand,
+                line.location.clone(),
+            ));
+        }
+
+        let command_string = words[0].to_string();
+
+        match &*command_string {
+            "SET" | "set" => {
+                if words.len() == 2 {
+                    command.set_var = Some(words[1].to_string());
+                } else if words.len() == 3 {
+                    command
+                        .set_vars
+                        .insert(words[1].to_string(), words[2].clone());
+                } else {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidSetVariable,
+                        line.location.clone(),
+                    ));
+                }
+            }
+            "EXPECT_FAILURE" | "expect_failure" => {
+                command.expect_failure = true;
+            }
+            "EXIT" | "exit" => {
+                if words.len() >= 2 {
+                    match &*words[1].to_string() {
+                        "any" => {
+                            command.exit = CommandExit::Any;
+                        }
+                        "fail" => {
+                            command.exit = CommandExit::AnyFailure;
+                        }
+                        "timeout" => {
+                            command.exit = CommandExit::Timeout;
+                        }
+                        status_str => {
+                            if let Ok(status) = status_str.parse::<i32>() {
+                                command.exit = CommandExit::Failure(status);
+                            } else {
+                                return Err(ScriptError::new(
+                                    ScriptErrorType::InvalidExitStatus,
+                                    line.location.clone(),
+                                ));
+                            }
+                        }
+                    }
+                } else {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidMetaCommand,
+                        line.location.clone(),
+                    ));
+                }
+            }
+            "TIMEOUT" | "timeout" => {
+                if words.len() >= 2 {
+                    let timeout_text = words[1..]
+                        .iter()
+                        .map(|w| w.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if let Ok(timeout) = humantime::parse_duration(&timeout_text) {
+                        command.timeout = Some(timeout);
+                    } else {
+                        return Err(ScriptError::new(
+                            ScriptErrorType::InvalidMetaCommand,
+                            line.location.clone(),
+                        ));
+                    }
+                } else {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidMetaCommand,
+                        line.location.clone(),
+                    ));
+                }
+            }
+            "EXPECT" | "expect" => {
+                if words.len() != 3 {
+                    return Err(ScriptError::new(
+                        ScriptErrorType::InvalidMetaCommand,
+                        line.location.clone(),
+                    ));
+                }
+
+                let key = words[1].to_string();
+                let value = words[2].clone();
+                command.expect.insert(key, value);
+            }
+            _ => {
+                return Err(ScriptError::new_with_data(
+                    ScriptErrorType::InvalidMetaCommand,
+                    line.location.clone(),
+                    format!("{line:?}"),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
