@@ -34,4 +34,36 @@ fails
 ---
 ✅ OK
 
+printf "hello: a (ok)\nhello: b (reject)\nhello: c (ok)\n"
+---
+hello: a (ok)
+hello: b (reject)
+hello: c (ok)
+---
+✅ OK
+
+printf "hello: a (ok)\nhello: a (ok)\nhello: c (ok)\n"
+---
+hello: a (ok)
+hello: a (ok)
+hello: c (ok)
+---
+✅ OK
+
+printf "hello: a (ok)\nhello: b (reject)\nhello: c (ok)\n"
+---
+hello: a (ok)
+hello: b (reject)
+hello: c (ok)
+---
+✅ OK
+
+printf "hello: a (ok)\nhello: a (ok)\nhello: c (ok)\n"
+---
+hello: a (ok)
+hello: a (ok)
+hello: c (ok)
+---
+✅ OK
+
 <root>/reject.cli PASSED

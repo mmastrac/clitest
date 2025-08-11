@@ -373,6 +373,12 @@ fn parse_script_v0_segment(
                                 patterns,
                             )))
                         },
+                        "not" => &|location, patterns| {
+                            OutputPatternType::Not(Box::new(OutputPattern::new_sequence(
+                                location.clone(),
+                                patterns,
+                            )))
+                        },
                         "*" => &|location: &ScriptLocation, patterns| {
                             OutputPatternType::Any(Box::new(OutputPattern::new_sequence(
                                 location.clone(),

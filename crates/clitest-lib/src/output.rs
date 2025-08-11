@@ -64,6 +64,17 @@ impl Lines {
         self.current_line >= self.lines.len()
     }
 
+    pub fn next_line(&self) -> Option<Line> {
+        if self.current_line < self.lines.len() {
+            Some(Line {
+                number: self.current_line,
+                text: self.lines[self.current_line].clone(),
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn next(
         &self,
         context: OutputMatchContext,
@@ -86,7 +97,7 @@ impl Lines {
                         return Err(OutputPatternMatchFailure {
                             location: rejected_pattern.location.clone(),
                             pattern_type: "reject",
-                            output_line: None,
+                            output_line: next.next_line(),
                         });
                     }
                 }
@@ -252,6 +263,7 @@ impl OutputPattern {
                 }
             }
             OutputPatternType::If(_, pattern) => pattern.prepare(grok)?,
+            OutputPatternType::Not(pattern) => pattern.prepare(grok)?,
             OutputPatternType::Any(pattern) => pattern.prepare(grok)?,
             OutputPatternType::Repeat(pattern) => pattern.prepare(grok)?,
             OutputPatternType::Optional(pattern) => pattern.prepare(grok)?,
@@ -315,6 +327,8 @@ pub enum OutputPatternType {
     Choice(Vec<OutputPattern>),
     /// A pattern that matches a sequence of patterns
     Sequence(Vec<OutputPattern>),
+    /// A negative look-ahead pattern
+    Not(Box<OutputPattern>),
     /// A pattern that matches a condition
     If(IfCondition, Box<OutputPattern>),
 }
@@ -345,6 +359,9 @@ impl Serialize for OutputPatternType {
             }
             OutputPatternType::Sequence(patterns) => {
                 HashMap::from([("sequence", &patterns)]).serialize(serializer)
+            }
+            OutputPatternType::Not(pattern) => {
+                HashMap::from([("not", &pattern)]).serialize(serializer)
             }
             OutputPatternType::Any(pattern) => {
                 HashMap::from([("any", &pattern)]).serialize(serializer)
@@ -379,6 +396,7 @@ impl OutputPatternType {
                 patterns.iter().map(|p| p.min_matches()).min().unwrap_or(0)
             }
             OutputPatternType::Sequence(patterns) => patterns.iter().map(|p| p.min_matches()).sum(),
+            OutputPatternType::Not(_) => 0,
             OutputPatternType::Any(pattern) => pattern.min_matches(),
             OutputPatternType::If(_, _) => 0,
             OutputPatternType::End => 0,
@@ -417,6 +435,7 @@ impl OutputPatternType {
             OutputPatternType::Sequence(patterns) => {
                 saturating_iter_sum(patterns.iter().map(|p| p.max_matches()))
             }
+            OutputPatternType::Not(_) => 0,
             OutputPatternType::Any(_) => usize::MAX,
             OutputPatternType::If(_, pattern) => pattern.max_matches(),
             OutputPatternType::End => 0,
@@ -440,6 +459,7 @@ impl std::fmt::Debug for OutputPatternType {
             OutputPatternType::Unordered(patterns) => write!(f, "Unordered({patterns:?})"),
             OutputPatternType::Choice(patterns) => write!(f, "Choice({patterns:?})"),
             OutputPatternType::Sequence(patterns) => write!(f, "Sequence({patterns:?})"),
+            OutputPatternType::Not(pattern) => write!(f, "Not({pattern:?})"),
             OutputPatternType::Any(until) => write!(f, "Any({until:?})"),
             OutputPatternType::If(condition, pattern) => {
                 write!(f, "If({condition:?}, {pattern:?})")
@@ -539,11 +559,28 @@ impl GrokPattern {
 }
 
 #[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
-#[display("pattern {pattern_type} at line {location} does not match output line {:?}", output_line.as_ref().map(|l| l.text.clone()).unwrap_or("<eof>".to_string()))]
+#[display("pattern {pattern_type} at line {location} {verb} output line {line:?}", verb = self.verb(), line = self.line())]
 pub struct OutputPatternMatchFailure {
     pub location: ScriptLocation,
     pub pattern_type: &'static str,
     pub output_line: Option<Line>,
+}
+
+impl OutputPatternMatchFailure {
+    fn verb(&self) -> &'static str {
+        if self.pattern_type == "reject" {
+            "rejected"
+        } else {
+            "does not match"
+        }
+    }
+
+    fn line(&self) -> String {
+        self.output_line
+            .as_ref()
+            .map(|l| l.text.clone())
+            .unwrap_or("<eof>".to_string())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -748,7 +785,7 @@ impl OutputPatternType {
                     return Err(OutputPatternMatchFailure {
                         location: location.clone(),
                         pattern_type: "unordered",
-                        output_line: None,
+                        output_line: output.next_line(),
                     });
                 }
                 Ok(output)
@@ -762,8 +799,20 @@ impl OutputPatternType {
                 Err(OutputPatternMatchFailure {
                     location: location.clone(),
                     pattern_type: "choice",
-                    output_line: None,
+                    output_line: output.next_line(),
                 })
+            }
+            OutputPatternType::Not(pattern) => {
+                // Negative lookahead
+                if let Err(_) = pattern.matches(context.descend(), output.clone()) {
+                    Ok(output)
+                } else {
+                    Err(OutputPatternMatchFailure {
+                        location: location.clone(),
+                        pattern_type: "not",
+                        output_line: output.next_line(),
+                    })
+                }
             }
             OutputPatternType::Any(until) => {
                 loop {

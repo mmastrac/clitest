@@ -71,6 +71,7 @@ commands and control structures.
 | `sequence { … }`                     | Match patterns in strict order                               | [Pattern Matching](./pattern-matching.md#sequence)                |
 | `optional { … }`                     | Make pattern optional (zero or one match)                    | [Pattern Matching](./pattern-matching.md#optional)                |
 | `if <condition> { … }`               | Conditionally require patterns                               | [Pattern Matching](./pattern-matching.md#conditional-patterns)    |
+| `not { … }`                          | Negative lookahead pattern                                   | [Pattern Matching](./pattern-matching.md#not)                     |
 | `ignore { … }`                       | Skip/ignore certain output patterns                          | [Pattern Matching](./pattern-matching.md#ignore)                  |
 | `reject { … }`                       | Ensure patterns don't appear in output                       | [Pattern Matching](./pattern-matching.md#reject)                  |
 

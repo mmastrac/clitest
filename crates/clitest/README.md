@@ -1,11 +1,13 @@
-# *CLI/test*: A literate CLI testing tool
+# _CLI/test_: A literate CLI testing tool
 
 [![Build](https://img.shields.io/github/actions/workflow/status/mmastrac/clitest/build.yml?branch=master)](https://github.com/mmastrac/clitest/actions/workflows/build.yml)
 [![Book](https://img.shields.io/badge/book-online-blue)](https://mmastrac.github.io/clitest/)
 
-A CLI testing tool that allows you to write tests for command-line applications using a simple, literate syntax.
+A CLI testing tool that allows you to write tests for command-line applications
+using a simple, literate syntax.
 
-For more information, see the [book](https://mmastrac.github.io/clitest/) which contains a full syntax reference and examples.
+For more information, see the [book](https://mmastrac.github.io/clitest/) which
+contains a full syntax reference and examples.
 
 ## Installation
 
@@ -41,8 +43,8 @@ The test files use the following syntax:
 
 ### Variables and Quoting
 
-*CLI/test* uses shell-style variable references and quoting to delimit strings in
-commands and control structures.
+_CLI/test_ uses shell-style variable references and quoting to delimit strings
+in commands and control structures.
 
 | Quote Type | Behavior                                              |
 | ---------- | ----------------------------------------------------- |
@@ -91,13 +93,14 @@ commands and control structures.
 | `sequence { … }`                     | Match patterns in strict order                               |
 | `optional { … }`                     | Make pattern optional (zero or one match)                    |
 | `if <condition> { … }`               | Conditionally require patterns                               |
+| `not { … }`                          | Negative lookahead pattern                                   |
 | `ignore { … }`                       | Skip/ignore certain output patterns                          |
 | `reject { … }`                       | Ensure patterns don't appear in output                       |
 
 ### Common Grok Patterns
 
-This is a subset of the grok patterns supported by *CLI/test*. See the full list of
-supported patterns at <https://docs.rs/grok/latest/grok/patterns/index.html>,
+This is a subset of the grok patterns supported by _CLI/test_. See the full list
+of supported patterns at <https://docs.rs/grok/latest/grok/patterns/index.html>,
 including the full base patterns in the `grok` module:
 <https://docs.rs/grok/latest/grok/patterns/grok/index.html>.
 
@@ -119,10 +122,10 @@ $ printf "a\nb\nc"
 ! c
 ```
 
-Match using a [grok](https://mmastrac.github.io/clitest/grok-patterns.html) pattern:
+Match using a [grok](https://mmastrac.github.io/clitest/grok-patterns.html)
+pattern:
 
 ```shell
 $ echo "Hello, anything"
 ? Hello, %{GREEDYDATA}
 ```
-

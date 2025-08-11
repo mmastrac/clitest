@@ -44,3 +44,48 @@ reject {
 # The previous rejection was scoped to that command
 $ printf "fails"
 ! fails
+
+# Test complex lookahead
+$ printf "hello: a (ok)\nhello: b (reject)\nhello: c (ok)\n"
+%EXPECT_FAILURE
+reject {
+    ? hello: (?!(a|c))\w \(%{DATA}\)
+}
+*
+
+$ printf "hello: a (ok)\nhello: a (ok)\nhello: c (ok)\n"
+reject {
+    ? hello: (?!(a|c))\w (%{DATA})
+}
+*
+
+# Test equivalent in not patterns
+$ printf "hello: a (ok)\nhello: b (reject)\nhello: c (ok)\n"
+%EXPECT_FAILURE
+reject {
+    sequence {
+        not {
+            choice {
+                ? hello: a \(%{DATA}\)
+                ? hello: c \(%{DATA}\)
+            }
+        }
+        ? hello: \w \(%{DATA}\)
+    }
+}
+*
+
+# Test equivalent in not patterns
+$ printf "hello: a (ok)\nhello: a (ok)\nhello: c (ok)\n"
+reject {
+    sequence {
+        not {
+            choice {
+                ? hello: a \(%{DATA}\)
+                ? hello: c \(%{DATA}\)
+            }
+        }
+        ? hello: \w \(%{DATA}\)
+    }
+}
+*

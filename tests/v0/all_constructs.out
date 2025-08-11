@@ -48,4 +48,11 @@ world
 ---
 ✅ OK
 
+printf "hello\nworld\n"
+---
+hello
+world
+---
+✅ OK
+
 <root>/all_constructs.cli PASSED

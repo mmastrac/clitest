@@ -194,6 +194,37 @@ optional {
 }
 ```
 
+#### Not
+
+Negative lookahead patterns are supported using `not`. The pattern will fail if
+the pattern matches when looking ahead. If the pattern does not match, it will
+succeed but consume no lines.
+
+```bash session
+$ echo "Hello World"
+not {
+    ! ERROR
+}
+! Hello World
+```
+
+This can be useful for better targeting of `reject` lines:
+
+```bash session
+$ echo "ERROR: We expect this one"
+reject {
+    # We don't want to reject this expected error, but any others should fail
+    sequence {
+        not {
+            ! ERROR: We expect this one
+        }
+        ! ERROR: %{GREEDYDATA}
+    }
+}
+# But remember that it doesn't get consumed!
+! ERROR: We expect this one
+```
+
 #### Ignore
 
 Ignore blocks are supported at the command and global level. Global ignore blocks are applied to all commands in the test, while command-level ignore blocks are applied to the command only.
