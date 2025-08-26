@@ -645,6 +645,10 @@ mod tests {
             r#"["a", "b\\'c", "d"]"#
         );
         assert_eq!(
+            format!("{:?}", shell_split(r#"a "b\nc" d"#).unwrap()),
+            r#"["a", "b\nc", "d"]"#
+        );
+        assert_eq!(
             format!("{:?}", shell_split(r#"a "a\\b" d"#).unwrap()),
             r#"["a", "a\\\\b", "d"]"#
         );

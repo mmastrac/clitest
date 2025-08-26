@@ -2,20 +2,6 @@
 
 *CLI/test* provides several control structures to help you write complex test scenarios.
 
-## Quoting
-
-Note that internal commands and control structures follow shell-style syntax, so quoting
-is significant.
-
-Single quotes (`'`) preserve the literal value of every character within the
-quotes. No characters inside single quotes have special meaning.
-
-Double quotes (`"`) preserve the literal value of most characters, but still
-allow for variable expansion (e.g., `$VAR` or `${VAR}`).
-
-Backslashes (`\`) can be used to escape the next character, preserving its
-literal meaning. This works both inside double quotes and unquoted text.
-
 ## For Loops
 
 The `for` block allows you to iterate over a list of values:
@@ -164,3 +150,34 @@ $ echo "run in included script"
 The included script is executed in the current script's context, so it can use
 the same variables and commands. The included script is treated as if it was a
 block in the outer script.
+
+
+## Variables
+
+Variables in commands and control structures are lazily expanded using
+shell-style variable references.
+
+```bash session
+set LINUX "linux";
+set WINDOWS "windows";
+
+for OS in "$LINUX" "$WINDOWS" {
+    $ uname -a | grep $OS
+    %EXIT any
+    *
+}
+```
+
+For more details, see [Quoting](./quoting.md).
+
+## Quoting
+
+Strings in commands and control structures are eagerly unescaped. 
+
+```bash session
+set VARIABLE "This is a \"quoted\" string with a hex escape\x21";
+$ echo $VARIABLE
+! This is a "quoted" string with a hex escape!
+```
+
+For more details, see [Quoting](./quoting.md).
