@@ -468,11 +468,25 @@ pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
         if in_escape {
             in_escape = false;
             match c {
+                // alert (BEL)
+                'a' => accum.push('\x07'),
+                // backspace
+                'b' => accum.push('\x08'),
+                // form feed
+                'f' => accum.push('\x0c'),
+                // new line
                 'n' => accum.push('\n'),
+                // carriage return
                 'r' => accum.push('\r'),
+                // horizontal tab
                 't' => accum.push('\t'),
+                // vertical tab
                 'v' => accum.push('\x0b'),
+                // escape
+                'e' => accum.push('\x1b'),
+                // null
                 '0' => accum.push('\0'),
+
                 '"' => accum.push('"'),
                 'x' => in_hex_escape = 2,
                 _ => {

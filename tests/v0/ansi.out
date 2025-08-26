@@ -1,18 +1,18 @@
 Running <root>/ansi.cli ...
 
-printf "\x1b[31mHello, world\x1b[0m\n"
+printf "\e[31mHello, world\e[0m\n"
 ---
 Hello, world
 ---
 ✅ OK
 
-printf "\x1b[31mHello, world\x1b[0m\n"
+printf "\e[31mHello, world\e[0m\n"
 ---
 Hello, world
 ---
 ✅ OK
 
-printf "\x1b[31mHello, world\x1b[0m\n"
+printf "\e[31mHello, world\e[0m\n"
 ---
 Hello, world
 ---

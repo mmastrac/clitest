@@ -1,21 +1,23 @@
 #!/usr/bin/env clitest --v0
 
-$ printf "\x1b[31mHello, world\x1b[0m\n"
+# We can use \e reliably across platforms.
+
+$ printf "\e[31mHello, world\e[0m\n"
 ! Hello, world
 
-$ printf "\x1b[31mHello, world\x1b[0m\n"
+$ printf "\e[31mHello, world\e[0m\n"
 ? Hello, %{WORD}
 
 # Not recommended, but valid
-$ printf "\x1b[31mHello, world\x1b[0m\n"
-? \x1b\[31mHello, world\x1b\[0m
+$ printf "\e[31mHello, world\e[0m\n"
+? \e\[31mHello, world\e\[0m
 
 # Ensure `set` works
-set ANSI_COLORED "\x1b[31mHello, world\x1b[0m";
+set ANSI_COLORED "\e[31mHello, world\e[0m";
 
 $ printf "$ANSI_COLORED\n"
 ! Hello, world
 
 # Not recommended, but valid
 $ printf "$ANSI_COLORED\n"
-? \x1b\[31mHello, world\x1b\[0m
+? \e\[31mHello, world\e\[0m
