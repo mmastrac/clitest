@@ -1,15 +1,35 @@
-Running tests/v0/ansi.cli ...
+Running <root>/ansi.cli ...
 
-printf "\\x1b[31mHello, world\\x1b[0m\n"
+printf "\x1b[31mHello, world\x1b[0m\n"
 ---
 Hello, world
 ---
 ✅ OK
 
-printf "\\x1b[31mHello, world\\x1b[0m\n"
+printf "\x1b[31mHello, world\x1b[0m\n"
 ---
 Hello, world
 ---
 ✅ OK
 
-tests/v0/ansi.cli PASSED
+printf "\x1b[31mHello, world\x1b[0m\n"
+---
+Hello, world
+---
+✅ OK
+
+set ANSI_COLORED ␛[31mHello, world␛[0m
+
+printf "$ANSI_COLORED\n"
+---
+Hello, world
+---
+✅ OK
+
+printf "$ANSI_COLORED\n"
+---
+Hello, world
+---
+✅ OK
+
+<root>/ansi.cli PASSED

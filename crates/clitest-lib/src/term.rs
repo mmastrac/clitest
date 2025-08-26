@@ -110,7 +110,11 @@ macro_rules! cwrite {
                 color.set_dimmed($dimmed);
             )?
             _ = $stream.set_color(&color);
-            _ = write!($stream, $literal $($arg)*);
+            let mut s = format!($literal $($arg)*);
+            if s.contains('\x1b') {
+                s = s.replace('\x1b', "\u{241B}"); // "ESC"
+            }
+            _ = write!($stream, "{s}");
             _ = $stream.set_color(&ColorSpec::new());
         }
     };
