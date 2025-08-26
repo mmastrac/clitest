@@ -662,19 +662,27 @@ impl OutputPatternType {
             OutputPatternType::Literal(literal) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
-                    if &line.text.trim_end() == literal {
+                    let text = line.text.trim_end();
+                    if text == literal {
                         context.trace(&format!("literal match: {:?} == {literal:?}", line.text));
                         Ok(next)
                     } else {
-                        context.trace(&format!(
-                            "literal FAILED match: {:?} == {literal:?}",
-                            line.text
-                        ));
-                        Err(OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "literal",
-                            output_line: Some(line),
-                        })
+                        if line.text.contains('\x1b')
+                            && fast_strip_ansi::strip_ansi_string(&line.text).as_ref() == literal
+                        {
+                            context.trace(&format!("literal match: {:?} == {literal:?}", text));
+                            Ok(next)
+                        } else {
+                            context.trace(&format!(
+                                "literal FAILED match: {:?} == {literal:?}",
+                                line.text
+                            ));
+                            Err(OutputPatternMatchFailure {
+                                location: location.clone(),
+                                pattern_type: "literal",
+                                output_line: Some(line),
+                            })
+                        }
                     }
                 } else {
                     Err(OutputPatternMatchFailure {
@@ -687,8 +695,15 @@ impl OutputPatternType {
             OutputPatternType::Pattern(pattern) => {
                 let (line, next) = output.next(context.clone())?;
                 if let Some(line) = line {
-                    let text = line.text.clone();
-                    let res = pattern.matches(&text);
+                    let mut text = line.text.clone();
+                    let mut res = pattern.matches(&text);
+                    if res.is_none() {
+                        // Give it a second chance with the ANSI-stripped text IF we detect escape sequences
+                        if text.contains('\x1b') {
+                            text = fast_strip_ansi::strip_ansi_string(&text).into_owned();
+                            res = pattern.matches(&text);
+                        }
+                    }
                     if let Some(matches) = res {
                         for alias in &pattern.aliases {
                             if let Some(value) = matches.get(&alias) {

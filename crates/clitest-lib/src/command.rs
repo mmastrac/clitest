@@ -155,10 +155,13 @@ impl CommandLine {
                         "{line_number:>3} "
                     );
                 }
+
+                // Careful that we don't print ANSI escape sequences
+                let line_out = fast_strip_ansi::strip_ansi_string(&line);
                 if is_stdout {
-                    cwriteln!(writer, fg = Color::White, "{line}");
+                    cwriteln!(writer, fg = Color::White, "{line_out}");
                 } else {
-                    cwriteln!(writer, fg = Color::Yellow, "{line}");
+                    cwriteln!(writer, fg = Color::Yellow, "{line_out}");
                 }
 
                 output_lines.push(line);

@@ -1,0 +1,7 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "\\x1b[31mHello, world\\x1b[0m\n"
+! Hello, world
+
+$ printf "\\x1b[31mHello, world\\x1b[0m\n"
+? Hello, %{WORD}
