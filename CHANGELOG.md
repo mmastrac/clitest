@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-08-25
+
+### Fixed
+- ansi: Fixed bug where ANSI escape sequences were not stripped from output
+- Automatically strip ANSI escape sequences from output if patterns don't match for a second match attempt
+
 ## [0.2.1] - 2025-08-11
 
 ### Added
