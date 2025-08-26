@@ -25,11 +25,11 @@ commands and control structures.
 
 | Quote Type | Behavior                                              | Location                                              |
 | ---------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| `'text'`   | Single quotes - literal value, no expansion           | [Control Structures](./control-structures.md#quoting) |
-| `"text"`   | Double quotes - literal value with variable expansion | [Control Structures](./control-structures.md#quoting) |
-| `\char`    | Backslash escape - preserve literal meaning           | [Control Structures](./control-structures.md#quoting) |
-| `$VAR`     | Basic variable reference                              | [Environment](./environment.md#basic-reference)       |
-| `${VAR}`   | Explicit variable reference                           | [Environment](./environment.md#explicit-reference)    |
+| `'text'`   | Single quotes - literal value, no expansion           | [Quoting](./quoting.md#single-quotes) |
+| `"text"`   | Double quotes - literal value with variable expansion | [Quoting](./quoting.md#double-quotes) |
+| `\char`    | Backslash escape - preserve literal meaning           | [Quoting](./quoting.md#backslash-escaping) |
+| `$VAR`     | Basic variable reference                              | [Quoting](./quoting.md#basic-reference)       |
+| `${VAR}`   | Explicit variable reference                           | [Quoting](./quoting.md#explicit-reference)    |
 | `$PWD`     | Special variable for working directory                | [Environment](./environment.md#pwd)                   |
 
 ## Control Structures

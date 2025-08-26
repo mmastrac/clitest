@@ -508,6 +508,28 @@ pub fn normalize_segments(segments: Vec<ScriptV0Segment>) -> Vec<ScriptV0Segment
     new_segments
 }
 
+/// This does a light-weight parse of a command-line to most determine the
+/// extent of the command-line. The shell is currently responsible for actual
+/// validation and running of the command.
+///
+/// Important rules:
+///
+///  - Backslashes escape the next character, except within a single-quoted
+///    string
+///  - Newlines within quoted strings or after a backslash continue the shell
+///    command to the next line
+///  - Outside of a quoted string, a comment always ends the command-line
+///
+/// Returns:
+///
+///  - UnclosedQuote if the command-line is unclosed because of a missing quote
+///  - UnclosedBackslash if the command-line is unclosed because of a missing
+///    backslash
+///  - IllegalShellCommand if the command-line is invalid
+///  - BackgroundProcessNotAllowed if the command-line contains a background
+///    process
+///  - UnsupportedRedirection if the command-line contains an unsupported
+///    redirection
 pub fn parse_command_line(
     location: ScriptLocation,
     line_count: usize,
@@ -515,39 +537,127 @@ pub fn parse_command_line(
 ) -> Result<CommandLine, ScriptErrorType> {
     let command_str = command.to_string();
     // Process the accumulated command
-    const SEPARATORS: &[&str] = &[
-        "&&", "||", "1>&2", "2>&1", "1>", "2>", "&", "|", ";", "(", ")", ">", "<", "=",
-    ];
-    let command = match shellish_parse::multiparse(
-        command,
-        shellish_parse::ParseOptions::default(),
-        SEPARATORS,
-    ) {
-        Ok(command) => command,
-        Err(shellish_parse::ParseError::DanglingString) => {
-            return Err(ScriptErrorType::UnclosedQuote);
-        }
-        Err(shellish_parse::ParseError::DanglingBackslash) => {
-            return Err(ScriptErrorType::UnclosedBackslash);
-        }
-        _ => {
-            return Err(ScriptErrorType::IllegalShellCommand);
-        }
-    };
-    let mut command_bits = vec![];
-    for (_, seperator) in command {
-        if let Some(seperator) = seperator {
-            if SEPARATORS[seperator] == "&" {
-                return Err(ScriptErrorType::BackgroundProcessNotAllowed);
-            }
-            if SEPARATORS[seperator] == ">&" {
-                return Err(ScriptErrorType::UnsupportedRedirection);
-            }
-            command_bits.push(SEPARATORS[seperator].to_string());
-        }
+    const SEPARATORS: &[&[u8; 2]] = &[b"&&", b"||", b">&"];
+
+    const SEPARATOR_CHARS: &[char] = &['>', '<', '&', '|', ';', '(', ')', '='];
+
+    enum State {
+        GroundFirst,
+        Ground,
+        Separator,
+        SingleQuoted,
+        DoubleQuoted,
+        DoubleQuotedBackslash,
+        Backslash,
+        Comment,
     }
 
-    Ok(CommandLine::new(command_str, location, line_count))
+    let mut state = State::Ground;
+    let mut last_char = '\0';
+
+    for c in command.chars() {
+        match state {
+            State::GroundFirst => {
+                if c == '\'' {
+                    state = State::SingleQuoted;
+                } else if c == '"' {
+                    state = State::DoubleQuoted;
+                } else if c == '\\' {
+                    state = State::Backslash;
+                } else if c == '\n' {
+                    unreachable!("newline in ground state");
+                } else if SEPARATOR_CHARS.contains(&c) {
+                    state = State::Separator;
+                } else if !c.is_ascii_whitespace() {
+                    state = State::Ground;
+                }
+            }
+            State::Ground => {
+                if c == '\'' {
+                    state = State::SingleQuoted;
+                } else if c == '"' {
+                    state = State::DoubleQuoted;
+                } else if c == '\\' {
+                    state = State::Backslash;
+                } else if c == '#' {
+                    state = State::Comment;
+                } else if c == '\n' {
+                    unreachable!("newline in ground state");
+                } else if c.is_ascii_whitespace() {
+                    state = State::GroundFirst;
+                }
+            }
+            State::Separator => {
+                let potential = [last_char as u8, c as u8];
+                if c.is_ascii() && SEPARATORS.contains(&&potential) {
+                    if &potential == b">&" {
+                        return Err(ScriptErrorType::UnsupportedRedirection);
+                    }
+                    state = State::GroundFirst;
+                } else {
+                    if last_char == '&' {
+                        return Err(ScriptErrorType::BackgroundProcessNotAllowed);
+                    }
+                    if c == '\'' {
+                        state = State::SingleQuoted;
+                    } else if c == '"' {
+                        state = State::DoubleQuoted;
+                    } else if c == '\\' {
+                        state = State::Backslash;
+                    } else if c == '#' {
+                        state = State::Comment;
+                    } else if c == '\n' {
+                        unreachable!("newline in ground state");
+                    } else if c.is_ascii_whitespace() {
+                        state = State::GroundFirst;
+                    }
+                }
+            }
+            State::SingleQuoted => {
+                if c == '\'' {
+                    state = State::Ground;
+                }
+            }
+            State::DoubleQuoted => {
+                if c == '"' {
+                    state = State::Ground;
+                } else if c == '\\' {
+                    state = State::DoubleQuotedBackslash;
+                }
+            }
+            State::DoubleQuotedBackslash => {
+                // Treat the next character as "not special"
+                state = State::DoubleQuoted;
+            }
+            State::Backslash => {
+                state = State::Ground;
+            }
+            State::Comment => {
+                if c == '\n' {
+                    state = State::Ground;
+                }
+            }
+        }
+        last_char = c;
+    }
+
+    match state {
+        State::SingleQuoted | State::DoubleQuoted => {
+            return Err(ScriptErrorType::UnclosedQuote);
+        }
+        State::Separator if last_char == '&' => {
+            return Err(ScriptErrorType::BackgroundProcessNotAllowed);
+        }
+        State::Separator if last_char != ';' => {
+            return Err(ScriptErrorType::IllegalShellCommand);
+        }
+        State::Backslash | State::DoubleQuotedBackslash => {
+            return Err(ScriptErrorType::UnclosedBackslash);
+        }
+        State::Comment | State::Ground | State::GroundFirst | State::Separator => {
+            return Ok(CommandLine::new(command_str, location, line_count));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -572,5 +682,22 @@ $ echo "world"
         eprintln!("{:#?}", segments);
         let normalized = normalize_segments(segments);
         eprintln!("{:#?}", normalized);
+    }
+
+    #[test]
+    fn test_parse_command_line() {
+        let location = ScriptLocation::new(ScriptFile::new("test"), 1);
+
+        let command = "echo 'hello' && echo 'world'";
+        let command = parse_command_line(location.clone(), 1, command).unwrap();
+        assert_eq!(command.command, "echo 'hello' && echo 'world'");
+
+        let command = r#"echo "hello\n" && echo 'world'"#;
+        let command = parse_command_line(location.clone(), 1, command).unwrap();
+        assert_eq!(command.command, r#"echo "hello\n" && echo 'world'"#);
+
+        let command = r#"echo "hello\x1b" && echo 'world'"#;
+        let command = parse_command_line(location.clone(), 1, command).unwrap();
+        assert_eq!(command.command, r#"echo "hello\x1b" && echo 'world'"#);
     }
 }

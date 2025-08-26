@@ -375,6 +375,8 @@ fn write_debug_path(f: &mut std::fmt::Formatter<'_>, path: &Path) -> std::fmt::R
 pub enum ShellParseError {
     #[display("unmatched quote ({_0})")]
     UnmatchedQuote(#[error(not(source))] char),
+    #[display("invalid hex escape ({_0})")]
+    InvalidHexEscape(#[error(not(source))] char),
 }
 
 /// A single bit of a shell-ish string.
@@ -435,9 +437,66 @@ pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
     let mut result = Vec::new();
     let mut in_string = None;
     let mut in_escape = false;
+    let mut in_hex_escape = 0;
+    let mut hex_accum = 0;
     let mut accum = String::new();
 
     for c in input.chars() {
+        match in_hex_escape {
+            2 => {
+                in_hex_escape = 1;
+                if c.is_ascii_hexdigit() {
+                    hex_accum = c.to_digit(16).unwrap();
+                    continue;
+                } else {
+                    return Err(ShellParseError::InvalidHexEscape(c));
+                }
+            }
+            1 => {
+                in_hex_escape = 0;
+                if c.is_ascii_hexdigit() {
+                    hex_accum = hex_accum * 16 + c.to_digit(16).unwrap();
+                    accum.push(char::from_u32(hex_accum).unwrap());
+                    continue;
+                } else {
+                    return Err(ShellParseError::InvalidHexEscape(c));
+                }
+            }
+            _ => {}
+        }
+
+        if in_escape {
+            in_escape = false;
+            match c {
+                // alert (BEL)
+                'a' => accum.push('\x07'),
+                // backspace
+                'b' => accum.push('\x08'),
+                // form feed
+                'f' => accum.push('\x0c'),
+                // new line
+                'n' => accum.push('\n'),
+                // carriage return
+                'r' => accum.push('\r'),
+                // horizontal tab
+                't' => accum.push('\t'),
+                // vertical tab
+                'v' => accum.push('\x0b'),
+                // escape
+                'e' => accum.push('\x1b'),
+                // null
+                '0' => accum.push('\0'),
+
+                '"' => accum.push('"'),
+                'x' => in_hex_escape = 2,
+                _ => {
+                    accum.push('\\');
+                    accum.push(c);
+                }
+            }
+            continue;
+        }
+
         if let Some(string_char) = in_string {
             if string_char == '\'' {
                 if c == string_char {
@@ -446,10 +505,6 @@ pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
                 } else {
                     accum.push(c);
                 }
-            } else if in_escape {
-                in_escape = false;
-                accum.push('\\');
-                accum.push(c);
             } else if c == '\\' {
                 in_escape = true;
             } else if c == string_char {
@@ -462,10 +517,6 @@ pub fn shell_split(input: &str) -> Result<Vec<ShellBit>, ShellParseError> {
             }
         } else if c == '\\' {
             in_escape = true;
-        } else if in_escape {
-            in_escape = false;
-            accum.push('\\');
-            accum.push(c);
         } else if c == '"' || c == '\'' {
             in_string = Some(c);
         } else if c == ' ' {
@@ -586,8 +637,16 @@ mod tests {
             r#"["a", "b c", "d"]"#
         );
         assert_eq!(
+            format!("{:?}", shell_split(r#"a "b\"c" d"#).unwrap()),
+            r#"["a", "b\"c", "d"]"#
+        );
+        assert_eq!(
             format!("{:?}", shell_split(r#"a "b\'c" d"#).unwrap()),
             r#"["a", "b\\'c", "d"]"#
+        );
+        assert_eq!(
+            format!("{:?}", shell_split(r#"a "b\nc" d"#).unwrap()),
+            r#"["a", "b\nc", "d"]"#
         );
         assert_eq!(
             format!("{:?}", shell_split(r#"a "a\\b" d"#).unwrap()),

@@ -18,7 +18,8 @@ Each test file should start with the shebang:
 #!/usr/bin/env clitest --v0
 ```
 
-The `--v0` flag indicates that the test file uses version 0 of the syntax. This ensures backwards compatibility as the syntax evolves in future versions.
+The `--v0` flag indicates that the test file uses version 0 of the syntax. This
+ensures backwards compatibility as the syntax evolves in future versions.
 
 ## Basic Commands
 
@@ -34,8 +35,8 @@ $ echo "Hello World"
 You can split long commands across multiple lines using either backslashes or quotes:
 
 ```bash session
-$ echo "This is a very long command that \
-spans multiple lines"
+$ echo This is a very long command that \
+       spans multiple lines
 ! This is a very long command that spans multiple lines
 
 $ echo "This is another way to
@@ -43,6 +44,9 @@ split a command across lines"
 ! This is another way to
 ! split a command across lines 
 ```
+
+Special characters may need to be escaped using backslashes. See
+[Quoting](./quoting.md) for more details.
 
 ### Comments
 
