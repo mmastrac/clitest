@@ -11,7 +11,7 @@ use script::ScriptRunArgs;
 
 use crate::parser::parse_script_files;
 
-const README: &str = include_str!("../../../README.md");
+const README: &str = include_str!("../README.md");
 
 fn print_help() {
     // Extract content between markers
