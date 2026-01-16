@@ -23,14 +23,27 @@ by category.
 clitest uses shell-style variable references and quoting to delimit strings in
 commands and control structures.
 
-| Quote Type | Behavior                                              | Location                                              |
-| ---------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| `'text'`   | Single quotes - literal value, no expansion           | [Quoting](./quoting.md#single-quotes) |
-| `"text"`   | Double quotes - literal value with variable expansion | [Quoting](./quoting.md#double-quotes) |
+| Quote Type | Behavior                                              | Location                                   |
+| ---------- | ----------------------------------------------------- | ------------------------------------------ |
+| `'text'`   | Single quotes - literal value, no expansion           | [Quoting](./quoting.md#single-quotes)      |
+| `"text"`   | Double quotes - literal value with variable expansion | [Quoting](./quoting.md#double-quotes)      |
 | `\char`    | Backslash escape - preserve literal meaning           | [Quoting](./quoting.md#backslash-escaping) |
-| `$VAR`     | Basic variable reference                              | [Quoting](./quoting.md#basic-reference)       |
-| `${VAR}`   | Explicit variable reference                           | [Quoting](./quoting.md#explicit-reference)    |
-| `$PWD`     | Special variable for working directory                | [Environment](./environment.md#pwd)                   |
+| `$VAR`     | Basic variable reference                              | [Quoting](./quoting.md#basic-reference)    |
+| `${VAR}`   | Explicit variable reference                           | [Quoting](./quoting.md#explicit-reference) |
+| `$PWD`     | Special variable for working directory                | [Environment](./environment.md#pwd)        |
+
+## Special Variables
+
+These variables are automatically set by _CLI/test_ and available in all
+scripts:
+
+| Variable         | Description                               | Values                                        |
+| ---------------- | ----------------------------------------- | --------------------------------------------- |
+| `$PWD`           | Current working directory                 | Path string                                   |
+| `$INITIAL_PWD`   | Working directory when the script started | Path string                                   |
+| `$TARGET_OS`     | Target operating system                   | `windows`, `linux`, `macos`, `ios`, `android` |
+| `$TARGET_FAMILY` | Target OS family                          | `windows`, `unix`, `wasm`                     |
+| `$TARGET_ARCH`   | Target CPU architecture                   | `x86`, `x86_64`, `arm`, `aarch64`             |
 
 ## Control Structures
 
@@ -58,7 +71,7 @@ commands and control structures.
 | `! <text>`                           | Auto-escaped pattern (literal text matching + grok patterns) | [Pattern Matching](./pattern-matching.md#auto-escaped-patterns)   |
 | `? <pattern>`                        | Raw pattern (regex-style, requires escaping + grok patterns) | [Pattern Matching](./pattern-matching.md#raw-patterns)            |
 | `!!!`                                | Multi-line auto-escaped pattern block                        | [Pattern Matching](./pattern-matching.md#auto-escaped-multi-line) |
-| `???`                                | Multi-line raw pattern block                                 | [Pattern Matching](./pattern-matching.md#literal-multi-line) |
+| `???`                                | Multi-line raw pattern block                                 | [Pattern Matching](./pattern-matching.md#literal-multi-line)      |
 | `"""`                                | Multi-line literal block                                     | [Pattern Matching](./pattern-matching.md#raw-multi-line)          |
 | `*`                                  | Any pattern (matches any number of lines lazily)             | [Pattern Matching](./pattern-matching.md#any-pattern)             |
 | `%{PATTERN_NAME}`                    | Standard grok pattern                                        | [Grok Patterns](./grok-patterns.md#syntax)                        |

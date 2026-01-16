@@ -53,6 +53,7 @@ pattern block {
 | `%EXIT timeout`       | Expect command to timeout                     |
 | `%TIMEOUT <duration>` | Set timeout for a command (e.g., 100ms, 5s)   |
 | `%SET <variable>`     | Capture command output into a variable        |
+| `%EXPECT <alias> <v>` | Expect a grok capture alias to match a value  |
 | `%EXPECT_FAILURE`     | Expect pattern matching to fail               |
 
 ### Variables and Quoting
@@ -60,14 +61,15 @@ pattern block {
 _CLI/test_ uses shell-style variable references and quoting to delimit strings
 in commands and control structures.
 
-| Quote Type | Behavior                                              |
-| ---------- | ----------------------------------------------------- |
-| `'text'`   | Single quotes - literal value, no expansion           |
-| `"text"`   | Double quotes - literal value with variable expansion |
-| `\char`    | Backslash escape - preserve literal meaning           |
-| `$VAR`     | Basic variable reference                              |
-| `${VAR}`   | Explicit variable reference                           |
-| `$PWD`     | Special variable for working directory                |
+| Quote Type   | Behavior                                              |
+| ------------ | ----------------------------------------------------- |
+| `'text'`     | Single quotes - literal value, no expansion           |
+| `"text"`     | Double quotes - literal value with variable expansion |
+| `\char`      | Backslash escape - preserve literal meaning           |
+| `$VAR`       | Basic variable reference                              |
+| `${VAR}`     | Explicit variable reference                           |
+| `$PWD`       | Special variable for working directory                |
+| `$TARGET_OS` | Target OS (`linux`, `macos`, `windows`, etc.)         |
 
 ### Control Structures
 
@@ -96,6 +98,7 @@ in commands and control structures.
 | `? <pattern>`                        | Raw pattern (regex-style, requires escaping + grok patterns) |
 | `!!!`                                | Multi-line auto-escaped pattern block                        |
 | `???`                                | Multi-line raw pattern block                                 |
+| `"""`                                | Multi-line literal block (no grok expansion)                 |
 | `*`                                  | Any pattern (matches any number of lines lazily)             |
 | `%{PATTERN_NAME}`                    | Standard grok pattern                                        |
 | `%{PATTERN_NAME=(regex)}`            | Custom grok pattern with regex                               |
