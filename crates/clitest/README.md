@@ -24,6 +24,8 @@ clitest [options] [test-file] [test-file] ...
 The test runner will exit with a non-zero exit code if the command does not
 match the expected output.
 
+<!-- clihelp:start -->
+
 ## Syntax
 
 The test files use a simple syntax:
@@ -127,6 +129,8 @@ including the full base patterns in the `grok` module:
 | `%{GREEDYDATA}` | Matches any text (greedy) | `Hello, %{GREEDYDATA}` |
 | `%{WORD}`       | Matches word characters   | `[%{WORD}]`            |
 | `%{NUMBER}`     | Matches numeric values    | `Count: %{NUMBER}`     |
+
+<!-- clihelp:end -->
 
 ## Examples
 

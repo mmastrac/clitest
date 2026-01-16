@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use clap::{CommandFactory, Parser, ValueEnum};
+use clap::{Parser, ValueEnum};
 use std::{path::PathBuf, time::Duration};
 use termcolor::Color;
 
@@ -10,6 +10,36 @@ use clitest_lib::*;
 use script::ScriptRunArgs;
 
 use crate::parser::parse_script_files;
+
+const README: &str = include_str!("../../../README.md");
+
+fn print_help() {
+    // Extract content between markers
+    let start_marker = "<!-- clihelp:start -->";
+    let end_marker = "<!-- clihelp:end -->";
+
+    let help_content = README
+        .find(start_marker)
+        .and_then(|start| {
+            let content_start = start + start_marker.len();
+            README[content_start..]
+                .find(end_marker)
+                .map(|end| README[content_start..content_start + end].trim())
+        })
+        .unwrap_or("Help content not found");
+
+    // Print version info first
+    cprintln!(bold = true, "clitest {}", env!("CARGO_PKG_VERSION"));
+    cprintln!();
+    cprintln!("clitest --help for command-line usage");
+    cprintln!();
+    cprintln!("Visit https://mmastrac.github.io/clitest/ for more help.");
+    cprintln!();
+
+    // Render markdown to terminal
+    termimad::print_text(help_content);
+}
+
 #[derive(Parser, Debug, Clone, Copy, ValueEnum)]
 enum DumpFormat {
     Json,
@@ -63,15 +93,18 @@ struct Args {
     /// Version (used for shebang only)
     #[arg(long, hide = true)]
     v0: bool,
+
+    /// Show syntax help
+    #[arg(long)]
+    help_syntax: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    if args.scripts.is_empty() {
-        let mut builder = Args::command();
-        _ = builder.print_help();
-        std::process::exit(1);
+    if args.help_syntax || args.scripts.is_empty() {
+        print_help();
+        std::process::exit(if args.help_syntax { 0 } else { 1 });
     }
 
     let script_files = match parse_script_files(&args.scripts) {
@@ -81,6 +114,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for e in e {
                 cprintln!(fg = Color::Red, " {e}");
             }
+            cprintln!();
+            cprintln!(dimmed = true, "Run `clitest --help-syntax` for syntax help.");
             std::process::exit(1);
         }
     };
