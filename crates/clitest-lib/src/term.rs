@@ -50,7 +50,7 @@ pub fn compute_rule_string(message: &str, max_width: usize) -> String {
             }
         }
 
-        let s = format!("{}{}{}", start, ellipsis, end);
+        let s = format!("{start}{ellipsis}{end}");
         debug_assert!(s.width() <= max_width);
         s
     }

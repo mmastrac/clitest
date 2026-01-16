@@ -114,7 +114,7 @@ impl Lines {
 
     pub fn with_ignore(&self, ignore: &OutputPatterns) -> Self {
         let mut ignored_patterns = self.ignored_patterns.clone();
-        ignored_patterns.extend(&ignore);
+        ignored_patterns.extend(ignore);
         Self {
             ignored_patterns,
             ..self.clone()
@@ -123,7 +123,7 @@ impl Lines {
 
     pub fn with_reject(&self, reject: &OutputPatterns) -> Self {
         let mut rejected_patterns = self.rejected_patterns.clone();
-        rejected_patterns.extend(&reject);
+        rejected_patterns.extend(reject);
         Self {
             rejected_patterns,
             ..self.clone()
@@ -189,7 +189,7 @@ impl OutputPatterns {
 impl std::ops::Deref for OutputPatterns {
     type Target = Vec<OutputPattern>;
     fn deref(&self) -> &Self::Target {
-        &*self.patterns
+        &self.patterns
     }
 }
 
@@ -506,7 +506,7 @@ impl GrokPattern {
                     }
                 }
                 grok::parser::GrokComponent::GrokPattern { pattern, alias, .. } => {
-                    test_pattern.push_str(".");
+                    test_pattern.push('.');
                     final_pattern.push_str(pattern);
                     if !alias.is_empty() {
                         aliases.push(alias.to_string());
@@ -515,7 +515,7 @@ impl GrokPattern {
                 grok::parser::GrokComponent::PatternError(GrokPatternError::InvalidCharacter(
                     c,
                 )) => {
-                    return Err(format!("Invalid character in pattern: {:?}", c));
+                    return Err(format!("Invalid character in pattern: {c:?}"));
                 }
                 grok::parser::GrokComponent::PatternError(GrokPatternError::InvalidPattern) => {
                     return Err("Invalid grok pattern".to_string());
@@ -554,7 +554,7 @@ impl GrokPattern {
 
     pub fn matches<'a>(&'a self, text: &'a str) -> Option<grok::Matches<'a>> {
         let pattern_ref = self.grok.get().expect("grok pattern not compiled");
-        return pattern_ref.match_against(text);
+        pattern_ref.match_against(text)
     }
 }
 
@@ -656,7 +656,7 @@ impl OutputPatternType {
         context: OutputMatchContext,
         mut output: Lines,
     ) -> Result<Lines, OutputPatternMatchFailure> {
-        context.trace(&format!("matching {:?}", self));
+        context.trace(&format!("matching {self:?}"));
         match self {
             OutputPatternType::None => Ok(output),
             OutputPatternType::Literal(literal) => {
@@ -666,23 +666,21 @@ impl OutputPatternType {
                     if text == literal {
                         context.trace(&format!("literal match: {:?} == {literal:?}", line.text));
                         Ok(next)
+                    } else if line.text.contains('\x1b')
+                        && fast_strip_ansi::strip_ansi_string(&line.text).as_ref() == literal
+                    {
+                        context.trace(&format!("literal match: {text:?} == {literal:?}"));
+                        Ok(next)
                     } else {
-                        if line.text.contains('\x1b')
-                            && fast_strip_ansi::strip_ansi_string(&line.text).as_ref() == literal
-                        {
-                            context.trace(&format!("literal match: {:?} == {literal:?}", text));
-                            Ok(next)
-                        } else {
-                            context.trace(&format!(
-                                "literal FAILED match: {:?} == {literal:?}",
-                                line.text
-                            ));
-                            Err(OutputPatternMatchFailure {
-                                location: location.clone(),
-                                pattern_type: "literal",
-                                output_line: Some(line),
-                            })
-                        }
+                        context.trace(&format!(
+                            "literal FAILED match: {:?} == {literal:?}",
+                            line.text
+                        ));
+                        Err(OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "literal",
+                            output_line: Some(line),
+                        })
                     }
                 } else {
                     Err(OutputPatternMatchFailure {
@@ -706,7 +704,7 @@ impl OutputPatternType {
                     }
                     if let Some(matches) = res {
                         for alias in &pattern.aliases {
-                            if let Some(value) = matches.get(&alias) {
+                            if let Some(value) = matches.get(alias) {
                                 let existing = context
                                     .expectations
                                     .lock()
@@ -851,10 +849,10 @@ impl OutputPatternType {
             }
             OutputPatternType::If(condition, pattern) => {
                 if condition.matches(context.script_context) {
-                    context.trace(&format!("if match: {:?}", condition));
+                    context.trace(&format!("if match: {condition:?}"));
                     pattern.matches(context.clone(), output.clone())
                 } else {
-                    context.trace(&format!("if FAILED match: {:?}", condition));
+                    context.trace(&format!("if FAILED match: {condition:?}"));
                     Ok(output)
                 }
             }

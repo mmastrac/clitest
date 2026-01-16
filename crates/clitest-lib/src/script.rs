@@ -197,8 +197,7 @@ impl ScriptEnv {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in ${{...}}: {:?} (in {value:?})",
-                                variable
+                                "undefined variable in ${{...}}: {variable:?} (in {value:?})"
                             )));
                         }
                         state = State::Normal;
@@ -214,8 +213,7 @@ impl ScriptEnv {
                         state = State::InCurly;
                     } else {
                         return Err(ScriptRunError::ExpansionError(format!(
-                            "invalid variable: {:?} (in {value:?})",
-                            c
+                            "invalid variable: {c:?} (in {value:?})"
                         )));
                     }
                 }
@@ -227,8 +225,7 @@ impl ScriptEnv {
                             expanded.push_str(value);
                         } else {
                             return Err(ScriptRunError::ExpansionError(format!(
-                                "undefined variable in $...: {:?} (in {value:?})",
-                                variable
+                                "undefined variable in $...: {variable:?} (in {value:?})"
                             )));
                         }
                         expanded.push(c);
@@ -243,8 +240,7 @@ impl ScriptEnv {
                     expanded.push_str(value);
                 } else {
                     return Err(ScriptRunError::ExpansionError(format!(
-                        "undefined variable: {}",
-                        variable
+                        "undefined variable: {variable}"
                     )));
                 }
             }
@@ -255,8 +251,7 @@ impl ScriptEnv {
             }
             State::InCurly => {
                 return Err(ScriptRunError::ExpansionError(format!(
-                    "unclosed variable: {}",
-                    variable
+                    "unclosed variable: {variable}"
                 )));
             }
             State::Normal => {}
@@ -836,8 +831,8 @@ impl ScriptRunError {
     pub fn short(&self) -> String {
         match self {
             Self::Pattern(_) => "Pattern".to_string(),
-            Self::PatternPrepareError(e) => format!("PatternPrepareError({:?})", e),
-            Self::Exit(status) => format!("Exit({})", status),
+            Self::PatternPrepareError(e) => format!("PatternPrepareError({e:?})"),
+            Self::Exit(status) => format!("Exit({status})"),
             Self::ExpectedFailure => "ExpectedFailure".to_string(),
             Self::IO(e) => format!("IO({:?})", e.kind()),
             Self::Killed => "Killed".to_string(),
@@ -845,7 +840,7 @@ impl ScriptRunError {
             Self::ExpansionError(e) => "ExpansionError".to_string(),
             Self::RetryTookTooLong => "RetryTookTooLong".to_string(),
             Self::ExitScript => unreachable!(),
-            Self::IncludedFileNotFound(path) => format!("IncludedFileNotFound({})", path),
+            Self::IncludedFileNotFound(path) => format!("IncludedFileNotFound({path})"),
         }
     }
 }
@@ -1808,7 +1803,7 @@ repeat {
 
         let script = parse_script(ScriptFile::new("test.cli"), script)?;
         assert_eq!(script.commands.len(), 3);
-        eprintln!("{:?}", script);
+        eprintln!("{script:?}");
         Ok(())
     }
 

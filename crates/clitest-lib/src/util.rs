@@ -217,8 +217,8 @@ fn canonicalize_path(path: &Path) -> Cow<Path> {
         return path.into();
     }
 
-    let components = path.components();
-    let Some(last) = components.last() else {
+    let mut components = path.components();
+    let Some(last) = components.next_back() else {
         return path.into();
     };
 
@@ -246,8 +246,8 @@ fn canonicalize_path(path: &Path) -> Cow<Path> {
         }
 
         path = parent;
-        let components = path.components();
-        let Some(last) = components.last() else {
+        let mut components = path.components();
+        let Some(last) = components.next_back() else {
             return path.into();
         };
 
@@ -548,18 +548,18 @@ mod tests {
     fn test_nice_path_buf_tmp_unix() {
         let path = NicePathBuf::new(Path::new("/tmp/hello.world"));
 
-        assert_eq!("/tmp/hello.world", format!("{}", path));
-        assert_eq!("\"/tmp/hello.world\"", format!("{:?}", path));
+        assert_eq!("/tmp/hello.world", format!("{path}"));
+        assert_eq!("\"/tmp/hello.world\"", format!("{path:?}"));
 
         let path = NicePathBuf::new(Path::new("//tmp//hello.world"));
 
-        assert_eq!("/tmp/hello.world", format!("{}", path));
-        assert_eq!("\"/tmp/hello.world\"", format!("{:?}", path));
+        assert_eq!("/tmp/hello.world", format!("{path}"));
+        assert_eq!("\"/tmp/hello.world\"", format!("{path:?}"));
 
         let path = NicePathBuf::new(Path::new("//does-not-exist-anywhere/..//tmp//hello.world"));
 
-        assert_eq!("/tmp/hello.world", format!("{}", path));
-        assert_eq!("\"/tmp/hello.world\"", format!("{:?}", path));
+        assert_eq!("/tmp/hello.world", format!("{path}"));
+        assert_eq!("\"/tmp/hello.world\"", format!("{path:?}"));
 
         let path = NicePathBuf::new(
             Path::new("/tmp")
@@ -568,8 +568,8 @@ mod tests {
                 .join("hello.world"),
         );
 
-        assert_eq!("/tmp/hello.world", format!("{}", path));
-        assert_eq!("\"/tmp/hello.world\"", format!("{:?}", path));
+        assert_eq!("/tmp/hello.world", format!("{path}"));
+        assert_eq!("\"/tmp/hello.world\"", format!("{path:?}"));
 
         // Test partial canonicalization
         let temp_dir = NiceTempDir::new();

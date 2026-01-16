@@ -65,7 +65,7 @@ impl Preprocessor for ClitestPreprocessor {
                         }
                         Ok(mut script) => {
                             // Hrad-code an include
-                            script.includes = Arc::new(HashMap::from_iter([("include/included.cli".to_string(), Script::new(ScriptFile::new("include/included.cli".to_string())))]));
+                            script.includes = Arc::new(HashMap::from_iter([("include/included.cli".to_string(), Script::new(ScriptFile::new("include/included.cli")))]));
                             let args = ScriptRunArgs {
                                 quiet: true,
                                 global_timeout: Some(Duration::from_secs(5)),

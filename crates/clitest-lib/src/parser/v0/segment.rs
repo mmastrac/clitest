@@ -116,7 +116,7 @@ impl std::fmt::Debug for ScriptV0Segment {
             let indent_str = " ".repeat(indent);
             // HACK: Indent the segments by using width, but don't print indent here
             match self {
-                ScriptV0Segment::Block(block) => writeln!(f, "{:#indent$?}", block),
+                ScriptV0Segment::Block(block) => writeln!(f, "{block:#indent$?}"),
                 ScriptV0Segment::SubBlock(location, text, args, segments) => {
                     writeln!(f, "{indent_str}:{} {text:?}{args:?} {{", location.line)?;
                     for segment in segments {
@@ -642,20 +642,12 @@ pub fn parse_command_line(
     }
 
     match state {
-        State::SingleQuoted | State::DoubleQuoted => {
-            return Err(ScriptErrorType::UnclosedQuote);
-        }
-        State::Separator if last_char == '&' => {
-            return Err(ScriptErrorType::BackgroundProcessNotAllowed);
-        }
-        State::Separator if last_char != ';' => {
-            return Err(ScriptErrorType::IllegalShellCommand);
-        }
-        State::Backslash | State::DoubleQuotedBackslash => {
-            return Err(ScriptErrorType::UnclosedBackslash);
-        }
+        State::SingleQuoted | State::DoubleQuoted => Err(ScriptErrorType::UnclosedQuote),
+        State::Separator if last_char == '&' => Err(ScriptErrorType::BackgroundProcessNotAllowed),
+        State::Separator if last_char != ';' => Err(ScriptErrorType::IllegalShellCommand),
+        State::Backslash | State::DoubleQuotedBackslash => Err(ScriptErrorType::UnclosedBackslash),
         State::Comment | State::Ground | State::GroundFirst | State::Separator => {
-            return Ok(CommandLine::new(command_str, location, line_count));
+            Ok(CommandLine::new(command_str, location, line_count))
         }
     }
 }
@@ -679,9 +671,9 @@ $ echo "world"
         let lines = ScriptLine::parse(ScriptFile::new("test"), script);
 
         let segments = segment_script(true, &mut lines.as_slice()).unwrap();
-        eprintln!("{:#?}", segments);
+        eprintln!("{segments:#?}");
         let normalized = normalize_segments(segments);
-        eprintln!("{:#?}", normalized);
+        eprintln!("{normalized:#?}");
     }
 
     #[test]

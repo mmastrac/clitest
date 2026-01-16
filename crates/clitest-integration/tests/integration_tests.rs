@@ -253,7 +253,7 @@ fn check_output(test: &TestCase, output: String) -> bool {
         cprintln!(fg = Color::Red, "⚠️  Contents differ for {}!", test.path);
         cprintln_rule!();
         let comparison = pretty_assertions::StrComparison::new(&a, &b);
-        println!("{}", comparison);
+        println!("{comparison}");
         cprintln_rule!();
         cprintln!("\nOriginal output before munge:");
         cprintln_rule!();
