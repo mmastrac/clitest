@@ -39,7 +39,33 @@ pub fn run() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
 
-        let script = parse_script_file(None, ScriptFile::new(&test.path)).unwrap();
+        let script = match parse_script_file(None, ScriptFile::new(&test.path)) {
+            Ok(script) => script,
+            Err(e) => {
+                // Parse error - for fail tests this counts as a valid failure
+                total += 1;
+                if is_fail {
+                    let error_msg = e
+                        .iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    cprint!(fg = Color::Green, "✅ OK (parse error)");
+                    if !check_output(&test, error_msg) {
+                        failed += 1;
+                    }
+                } else {
+                    cprint!(fg = Color::Red, "❌ FAIL (parse error)");
+                    failed += 1;
+                    for err in e {
+                        cprint!(fg = Color::Red, " {}", err);
+                    }
+                    failed_tests.push(test);
+                }
+                cprintln!();
+                continue;
+            }
+        };
         total += 1;
         let args = ScriptRunArgs {
             quiet: true,
@@ -84,7 +110,16 @@ pub fn run() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprintln!(" ... ");
         cprintln_rule!();
-        let script = parse_script_file(None, ScriptFile::new(test.path.clone())).unwrap();
+        let script = match parse_script_file(None, ScriptFile::new(test.path.clone())) {
+            Ok(script) => script,
+            Err(e) => {
+                for err in e {
+                    cprintln!(fg = Color::Red, "{}", err);
+                }
+                cprintln_rule!();
+                continue;
+            }
+        };
         let args = ScriptRunArgs {
             show_line_numbers: true,
             ..Default::default()

@@ -788,7 +788,7 @@ pub enum ScriptErrorType {
     InvalidExitStatus,
     #[error("invalid set variable")]
     InvalidSetVariable,
-    #[error("invalid version")]
+    #[error("invalid version header, expected `#!/usr/bin/env clitest --v0`")]
     InvalidVersion,
     #[error("invalid internal command")]
     InvalidInternalCommand,
