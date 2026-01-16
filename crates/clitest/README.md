@@ -26,9 +26,23 @@ match the expected output.
 
 ## Syntax
 
-The test files use the following syntax:
+The test files use a simple syntax:
 
-### Command Execution
+```shell
+#!/usr/bin/env clitest --v0
+
+# Comments use shell-style syntax
+$ <command> …
+%DIRECTIVE(s)
+! pattern text and/or %{GROK_NAMED_PATTERN}
+pattern block {
+  ? more patterns
+}
+*
+! etc…
+```
+
+### Command Execution and Directives
 
 | Command               | Description                                   |
 | --------------------- | --------------------------------------------- |
@@ -116,6 +130,8 @@ including the full base patterns in the `grok` module:
 Match exact output:
 
 ```shell
+#!/usr/bin/env clitest --v0
+
 $ printf "a\nb\nc"
 ! a
 ! b

@@ -69,23 +69,27 @@ $ echo "Hello World"
 
 ## Exit Codes
 
-By default, *CLI/test* expects commands to exit with code 0. You can specify a different expected exit code using `%EXIT`:
+By default, *CLI/test* expects commands to exit with code 0. You can specify a different expected exit code 
+using `%EXIT`. `%` directives appear between the command (`$`) and patterns:
 
 ```bash session
-$ exit 1
+$ echo 'fail' && exit 1
 %EXIT 1
+! fail
 ```
 
 To expect a command to return a failing exit code (ie: non-zero):
 
 ```bash session
-$ exit 1
+$ echo 'fail' && exit 1
 %EXIT fail
+! fail
 ```
 
 Or to accept any exit code (this will also accept a command that times out):
 
 ```bash session
-$ exit 1
+$ echo 'fail' && exit 1
 %EXIT any
+! fail
 ```
