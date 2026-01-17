@@ -42,10 +42,10 @@ pub fn load_test_scripts(pattern: Option<&str>) -> Vec<TestCase> {
             if !test_name.ends_with(".cli") {
                 continue;
             }
-            if let Some(pattern) = pattern {
-                if !format!("{test_dir_name}/{test_name}").contains(pattern) {
-                    continue;
-                }
+            if let Some(pattern) = pattern
+                && !format!("{test_dir_name}/{test_name}").contains(pattern)
+            {
+                continue;
             }
 
             let test_content = std::fs::read_to_string(test.path()).unwrap();

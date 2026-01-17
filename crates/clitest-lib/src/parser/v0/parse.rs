@@ -191,13 +191,12 @@ fn parse_normalized_script_v0_commands(
             _ => unreachable!(),
         });
 
-        if let Some(maybe_meta) = pattern.first() {
-            if let ScriptV0Segment::Block(block) = maybe_meta {
-                if block.block_type.is_meta() {
-                    pattern = pattern.split_first().unwrap().1;
-                    parse_script_v0_meta(block, &mut command)?;
-                }
-            }
+        if let Some(maybe_meta) = pattern.first()
+            && let ScriptV0Segment::Block(block) = maybe_meta
+            && block.block_type.is_meta()
+        {
+            pattern = pattern.split_first().unwrap().1;
+            parse_script_v0_meta(block, &mut command)?;
         }
 
         let builder = parse_script_v0_segments(pattern)?;
@@ -436,11 +435,11 @@ fn parse_if_condition(
             args[2].clone(),
         ))
     } else {
-        return Err(ScriptError::new_with_data(
+        Err(ScriptError::new_with_data(
             ScriptErrorType::InvalidIfCondition,
             location.clone(),
             format!("{args:?}"),
-        ));
+        ))
     }
 }
 

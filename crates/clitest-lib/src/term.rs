@@ -17,6 +17,7 @@ pub fn term_width() -> usize {
     termsize::get().map(|s| (s.cols - 1) as usize).unwrap_or(79)
 }
 
+#[allow(clippy::while_let_loop)]
 pub fn compute_rule_string(message: &str, max_width: usize) -> String {
     if message.width() <= max_width {
         message.to_string()

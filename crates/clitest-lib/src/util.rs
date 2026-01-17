@@ -212,7 +212,7 @@ impl From<&'_ NiceTempDir> for NicePathBuf {
 }
 
 /// Best effort to canonicalize a path.
-fn canonicalize_path(path: &Path) -> Cow<Path> {
+fn canonicalize_path(path: &Path) -> Cow<'_, Path> {
     if let Ok(path) = dunce::canonicalize(path) {
         return path.into();
     }
@@ -269,23 +269,24 @@ fn write_pretty_path(
     let mut canon_path = canonicalize_path(path);
 
     // On Apple, we can strip the /private prefix from the path for display purposes
-    if cfg!(target_vendor = "apple") && canon_path.is_absolute() {
-        if let Ok(without_private) = canon_path.strip_prefix("/private") {
-            canon_path = Path::new("/").join(without_private).into();
-        }
+    if cfg!(target_vendor = "apple")
+        && canon_path.is_absolute()
+        && let Ok(without_private) = canon_path.strip_prefix("/private")
+    {
+        canon_path = Path::new("/").join(without_private).into();
     }
 
     // If the path is relative, we can try strip the cwd from its canonical
     // version to eliminate any relative paths.
-    if let Some(cwd) = cwd {
-        if let Ok(path) = canon_path.strip_prefix(cwd) {
-            if debug {
-                write_debug_path(f, path)?;
-            } else {
-                write!(f, "{}", path.display())?;
-            }
-            return Ok(());
+    if let Some(cwd) = cwd
+        && let Ok(path) = canon_path.strip_prefix(cwd)
+    {
+        if debug {
+            write_debug_path(f, path)?;
+        } else {
+            write!(f, "{}", path.display())?;
         }
+        return Ok(());
     }
 
     // Unlikely, but just print the path if we're not on unix or windows
@@ -321,13 +322,12 @@ fn write_pretty_path(
     // Skip out here in debug mode
     if debug {
         // On Windows, we can strip the \\?\ prefix from the path for display purposes
-        if cfg!(windows) {
-            if let Some(Component::Prefix(prefix)) = canon_path.components().next() {
-                // This is a backslash explosion in debug mode...
-                if let Prefix::VerbatimDisk(_) = prefix.kind() {
-                    return f
-                        .write_str(&format!("<{}>", canon_path.display()).replace(r"\\?\", ""));
-                }
+        if cfg!(windows)
+            && let Some(Component::Prefix(prefix)) = canon_path.components().next()
+        {
+            // This is a backslash explosion in debug mode...
+            if let Prefix::VerbatimDisk(_) = prefix.kind() {
+                return f.write_str(&format!("<{}>", canon_path.display()).replace(r"\\?\", ""));
             }
         }
 
@@ -336,28 +336,27 @@ fn write_pretty_path(
     }
 
     // If the path is in home, try to prettify it
-    if let Some(home) = home {
-        if let Ok(path) = canon_path.strip_prefix(home) {
-            if cfg!(unix) {
-                write!(f, "~/{}", path.display())?;
-            } else if cfg!(windows) {
-                write!(f, "%USERPROFILE%\\{}", path.display())?;
-            }
-            return Ok(());
+    if let Some(home) = home
+        && let Ok(path) = canon_path.strip_prefix(home)
+    {
+        if cfg!(unix) {
+            write!(f, "~/{}", path.display())?;
+        } else if cfg!(windows) {
+            write!(f, "%USERPROFILE%\\{}", path.display())?;
         }
+        return Ok(());
     }
 
     // On Windows, we can strip the \\?\ prefix from the path for display purposes
-    if cfg!(windows) {
-        if let Some(Component::Prefix(prefix)) = canon_path.components().next() {
-            if let Prefix::VerbatimDisk(_) = prefix.kind() {
-                return write!(
-                    f,
-                    "{}",
-                    canon_path.display().to_string().replace(r"\\?\", "")
-                );
-            }
-        }
+    if cfg!(windows)
+        && let Some(Component::Prefix(prefix)) = canon_path.components().next()
+        && let Prefix::VerbatimDisk(_) = prefix.kind()
+    {
+        return write!(
+            f,
+            "{}",
+            canon_path.display().to_string().replace(r"\\?\", "")
+        );
     }
 
     write!(f, "{}", canon_path.display())
@@ -410,11 +409,11 @@ impl PartialEq<&'_ str> for ShellBit {
     }
 }
 
-impl ShellBit {
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for ShellBit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ShellBit::Literal(s) => s.clone(),
-            ShellBit::Quoted(s) => s.clone(),
+            ShellBit::Literal(s) => f.write_str(s),
+            ShellBit::Quoted(s) => f.write_str(s),
         }
     }
 }

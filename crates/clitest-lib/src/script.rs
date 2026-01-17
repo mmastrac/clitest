@@ -951,6 +951,7 @@ impl CommandExit {
 }
 
 #[derive(derive_more::Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ScriptBlock {
     Command(ScriptCommand),
     InternalCommand(ScriptLocation, InternalCommand),
@@ -981,6 +982,7 @@ impl ScriptBlock {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn run_blocks(
         context: &mut ScriptRunContext,
         blocks: &[ScriptBlock],
@@ -1280,6 +1282,7 @@ pub enum InternalCommand {
 }
 
 impl InternalCommand {
+    #[allow(clippy::type_complexity)]
     pub fn run(
         &self,
         context: &mut ScriptRunContext,
