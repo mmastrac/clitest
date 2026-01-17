@@ -92,7 +92,9 @@ impl Lines {
                     }
                 }
                 for rejected_pattern in &*next.rejected_patterns {
-                    if let Ok(_) = rejected_pattern.matches(context.ignore(), ignore_check.clone())
+                    if rejected_pattern
+                        .matches(context.ignore(), ignore_check.clone())
+                        .is_ok()
                     {
                         return Err(OutputPatternMatchFailure {
                             location: rejected_pattern.location.clone(),
@@ -650,7 +652,7 @@ impl<'s> OutputMatchContext<'s> {
 }
 
 impl OutputPatternType {
-    pub fn matches<'s>(
+    pub fn matches(
         &self,
         location: &ScriptLocation,
         context: OutputMatchContext,
@@ -710,17 +712,17 @@ impl OutputPatternType {
                                     .lock()
                                     .unwrap()
                                     .insert(alias.clone(), value.to_string());
-                                if let Some(existing) = existing {
-                                    if existing != value {
-                                        context.trace(&format!(
-                                            "pattern alias FAILED match: {existing:?} != {value:?}",
-                                        ));
-                                        return Err(OutputPatternMatchFailure {
-                                            location: location.clone(),
-                                            pattern_type: "pattern",
-                                            output_line: Some(line),
-                                        });
-                                    }
+                                if let Some(existing) = existing
+                                    && existing != value
+                                {
+                                    context.trace(&format!(
+                                        "pattern alias FAILED match: {existing:?} != {value:?}",
+                                    ));
+                                    return Err(OutputPatternMatchFailure {
+                                        location: location.clone(),
+                                        pattern_type: "pattern",
+                                        output_line: Some(line),
+                                    });
                                 }
                             }
                         }
@@ -817,7 +819,7 @@ impl OutputPatternType {
             }
             OutputPatternType::Not(pattern) => {
                 // Negative lookahead
-                if let Err(_) = pattern.matches(context.descend(), output.clone()) {
+                if pattern.matches(context.descend(), output.clone()).is_err() {
                     Ok(output)
                 } else {
                     Err(OutputPatternMatchFailure {

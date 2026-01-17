@@ -54,6 +54,7 @@ impl CommandLine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
         &self,
         writer: &mut dyn termcolor::WriteColor,

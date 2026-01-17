@@ -8,4 +8,5 @@ title = "CLI/test Documentation"
 
 [output.html]
 
-[output.linkcheck]
+# Waiting for linkcheck to update
+#[output.linkcheck]

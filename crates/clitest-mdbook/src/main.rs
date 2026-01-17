@@ -1,10 +1,9 @@
 use clap::{Arg, ArgMatches, Command};
 use clitest_lib::parser;
 use clitest_lib::script::{Script, ScriptFile, ScriptOutput, ScriptRunArgs, ScriptRunContext};
-use mdbook::book::Book;
-use mdbook::errors::Error;
-use mdbook::preprocess::{CmdPreprocessor, Preprocessor, PreprocessorContext};
-use mdbook::BookItem;
+use mdbook_preprocessor::book::{Book, BookItem};
+use mdbook_preprocessor::errors::Error;
+use mdbook_preprocessor::{parse_input, Preprocessor, PreprocessorContext, MDBOOK_VERSION};
 use semver::{Version, VersionReq};
 use std::collections::HashMap;
 use std::io;
@@ -99,23 +98,23 @@ impl Preprocessor for ClitestPreprocessor {
         Ok(book)
     }
 
-    fn supports_renderer(&self, _renderer: &str) -> bool {
-        true
+    fn supports_renderer(&self, _renderer: &str) -> Result<bool, Error> {
+        Ok(true)
     }
 }
 
 fn handle_preprocessing(pre: &dyn Preprocessor) -> Result<(), Error> {
-    let (ctx, book) = CmdPreprocessor::parse_input(io::stdin())?;
+    let (ctx, book) = parse_input(io::stdin())?;
 
     let book_version = Version::parse(&ctx.mdbook_version)?;
-    let version_req = VersionReq::parse(mdbook::MDBOOK_VERSION)?;
+    let version_req = VersionReq::parse(MDBOOK_VERSION)?;
 
     if !version_req.matches(&book_version) {
         eprintln!(
             "Warning: The {} plugin was built against version {} of mdbook, \
              but we're being called from version {}",
             pre.name(),
-            mdbook::MDBOOK_VERSION,
+            MDBOOK_VERSION,
             ctx.mdbook_version
         );
     }
@@ -130,7 +129,7 @@ fn handle_supports(pre: &dyn Preprocessor, sub_args: &ArgMatches) -> ! {
     let renderer = sub_args
         .get_one::<String>("renderer")
         .expect("Required argument");
-    let supported = pre.supports_renderer(renderer);
+    let supported = pre.supports_renderer(renderer).unwrap_or(false);
 
     if supported {
         process::exit(0);

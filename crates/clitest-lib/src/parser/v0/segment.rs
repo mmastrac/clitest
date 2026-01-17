@@ -22,14 +22,14 @@ pub enum BlockType {
 
 impl BlockType {
     pub fn is_same_type_as(&self, other: &Self) -> bool {
-        match (self, other) {
-            (BlockType::Command(_), BlockType::Command(_)) => true,
-            (BlockType::Ineffectual, BlockType::Ineffectual) => true,
-            (BlockType::Pattern, BlockType::Pattern) => true,
-            (BlockType::Meta, BlockType::Meta) => true,
-            (BlockType::Any, BlockType::Any) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (BlockType::Command(_), BlockType::Command(_))
+                | (BlockType::Ineffectual, BlockType::Ineffectual)
+                | (BlockType::Pattern, BlockType::Pattern)
+                | (BlockType::Meta, BlockType::Meta)
+                | (BlockType::Any, BlockType::Any)
+        )
     }
 }
 
@@ -480,22 +480,22 @@ pub fn normalize_segments(segments: Vec<ScriptV0Segment>) -> Vec<ScriptV0Segment
     // Pass 2: Convert any "any"-type blocks to sub-blocks and steal the next line or non-command subblock.
     let mut i = 0;
     while i < new_segments.len() {
-        if let ScriptV0Segment::Block(block) = &mut new_segments[i] {
-            if block.block_type.is_any() {
-                let location = block.location.clone();
-                new_segments[i] =
-                    ScriptV0Segment::SubBlock(location.clone(), "*".to_string(), vec![], vec![]);
+        if let ScriptV0Segment::Block(block) = &mut new_segments[i]
+            && block.block_type.is_any()
+        {
+            let location = block.location.clone();
+            new_segments[i] =
+                ScriptV0Segment::SubBlock(location.clone(), "*".to_string(), vec![], vec![]);
 
-                if i + 1 < new_segments.len() {
-                    if let Some(first) = new_segments[i + 1].split_first() {
-                        new_segments[i] = ScriptV0Segment::SubBlock(
-                            location.clone(),
-                            "*".to_string(),
-                            vec![],
-                            vec![first],
-                        );
-                    }
-                }
+            if i + 1 < new_segments.len()
+                && let Some(first) = new_segments[i + 1].split_first()
+            {
+                new_segments[i] = ScriptV0Segment::SubBlock(
+                    location.clone(),
+                    "*".to_string(),
+                    vec![],
+                    vec![first],
+                );
             }
         }
         if new_segments[i].is_empty() {
