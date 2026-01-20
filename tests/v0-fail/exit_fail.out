@@ -8,5 +8,5 @@ exit 1
  → exit 1
 
 <root>/exit_fail.cli FAILED
-Error: exit status: 1
+Error: exit status: 1 at line <root>/exit_fail.cli:3
 

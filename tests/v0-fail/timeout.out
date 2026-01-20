@@ -9,5 +9,5 @@ Process took too long!
  → echo "Goodnight, forever!" && sleep 60
 
 <root>/timeout.cli FAILED
-Error: timed out
+Error: timed out at line <root>/timeout.cli:3
 

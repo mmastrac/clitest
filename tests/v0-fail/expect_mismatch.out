@@ -8,5 +8,5 @@ hello
  → printf "hello\n"
 
 <root>/expect_mismatch.cli FAILED
-Error: expected failure, but passed
+Error: expected failure, but passed at line <root>/expect_mismatch.cli:3
 
