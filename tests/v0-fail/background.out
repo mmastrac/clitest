@@ -14,5 +14,5 @@ hi
  → exit 1
 
 <root>/background.cli FAILED
-Error: exit status: 1
+Error: exit status: 1 at line <root>/background.cli:4
 

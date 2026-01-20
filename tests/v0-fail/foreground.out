@@ -14,5 +14,5 @@ hi
 ✅ OK
 
 <root>/foreground.cli FAILED
-Error: exit status: 1
+Error: exit status: 1 at line <root>/foreground.cli:8
 

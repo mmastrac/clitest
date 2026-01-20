@@ -805,12 +805,12 @@ pub enum ScriptRunError {
     Pattern(#[from] OutputPatternMatchFailure),
     #[error("{0}")]
     PatternPrepareError(#[from] OutputPatternPrepareError),
-    #[error("{0}")]
-    Exit(CommandResult),
+    #[error("{0} at line {1}")]
+    Exit(CommandResult, ScriptLocation),
     #[error("included file not found: {0}")]
     IncludedFileNotFound(String),
-    #[error("expected failure, but passed")]
-    ExpectedFailure,
+    #[error("expected failure, but passed at line {0}")]
+    ExpectedFailure(ScriptLocation),
     #[error("{0}")]
     ExpansionError(String),
     #[error("{0}")]
@@ -832,8 +832,8 @@ impl ScriptRunError {
         match self {
             Self::Pattern(_) => "Pattern".to_string(),
             Self::PatternPrepareError(e) => format!("PatternPrepareError({e:?})"),
-            Self::Exit(status) => format!("Exit({status})"),
-            Self::ExpectedFailure => "ExpectedFailure".to_string(),
+            Self::Exit(status, _) => format!("Exit({status})"),
+            Self::ExpectedFailure(_) => "ExpectedFailure".to_string(),
             Self::IO(e) => format!("IO({:?})", e.kind()),
             Self::Killed => "Killed".to_string(),
             Self::BackgroundProcessTookTooLong => "BackgroundProcessTookTooLong".to_string(),
@@ -1681,7 +1681,7 @@ impl ScriptResult {
                     self.command.command
                 );
                 cwriteln!(context.stream());
-                return Err(ScriptRunError::Exit(status));
+                return Err(ScriptRunError::Exit(status, self.command.location.clone()));
             }
         }
 
@@ -1723,7 +1723,7 @@ impl ScriptResult {
                     self.command.command
                 );
                 cwriteln!(context.stream());
-                return Err(ScriptRunError::ExpectedFailure);
+                return Err(ScriptRunError::ExpectedFailure(self.command.location.clone()));
             }
         }
 
