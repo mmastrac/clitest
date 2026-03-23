@@ -1,0 +1,17 @@
+Running <root>/repeat.cli ...
+
+printf "hello\n"
+---
+hello
+---
+ERROR: pattern literal at line <root>/repeat.cli:5 does not match output line "hello"
+matching Sequence([Repeat(Literal(goodbye)), End])
+  matching Repeat(Literal(goodbye))
+    matching Literal(goodbye)
+    literal FAILED match: "hello" == "goodbye"
+
+❌ FAIL
+
+<root>/repeat.cli FAILED
+Error: pattern literal at line <root>/repeat.cli:5 does not match output line "hello"
+

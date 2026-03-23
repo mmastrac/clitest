@@ -1,0 +1,18 @@
+Running <root>/sequence.cli ...
+
+printf "b\na\n"
+---
+b
+a
+---
+ERROR: pattern literal at line <root>/sequence.cli:5 does not match output line "b"
+matching Sequence([Sequence([Literal(a), Literal(b)]), End])
+  matching Sequence([Literal(a), Literal(b)])
+    matching Literal(a)
+    literal FAILED match: "b" == "a"
+
+❌ FAIL
+
+<root>/sequence.cli FAILED
+Error: pattern literal at line <root>/sequence.cli:5 does not match output line "b"
+

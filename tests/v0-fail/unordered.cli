@@ -1,0 +1,8 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "a\nb\n"
+unordered {
+    ! a
+    ! b
+    ! c
+}

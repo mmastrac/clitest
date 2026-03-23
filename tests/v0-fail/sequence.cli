@@ -1,0 +1,7 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "b\na\n"
+sequence {
+    ! a
+    ! b
+}

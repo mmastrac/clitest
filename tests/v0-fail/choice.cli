@@ -1,0 +1,8 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "hello\n"
+choice {
+    ! foo
+    ! bar
+    ! baz
+}

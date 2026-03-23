@@ -1,0 +1,7 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "hello\nworld\n"
+ignore {
+    ! hello
+}
+! goodbye

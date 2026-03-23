@@ -1,0 +1,18 @@
+Running <root>/optional.cli ...
+
+printf "hello\n"
+---
+hello
+---
+ERROR: pattern literal at line <root>/optional.cli:7 does not match output line "<eof>"
+matching Sequence([Optional(Literal(hello)), Literal(hello), End])
+  matching Optional(Literal(hello))
+    matching Literal(hello)
+    literal match: "hello" == "hello"
+  matching Literal(hello)
+
+❌ FAIL
+
+<root>/optional.cli FAILED
+Error: pattern literal at line <root>/optional.cli:7 does not match output line "<eof>"
+
