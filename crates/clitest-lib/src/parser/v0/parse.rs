@@ -649,9 +649,10 @@ mod tests {
 
     #[test]
     fn test_v0_patterns() {
-        let mut patterns = vec![];
-        patterns.push(parse_pattern("! a\n! b\n! c\n").unwrap());
-        patterns.push(parse_pattern("!!!\na\nb\nc\n!!!\n").unwrap());
+        let patterns = vec![
+            parse_pattern("! a\n! b\n! c\n").unwrap(),
+            parse_pattern("!!!\na\nb\nc\n!!!\n").unwrap(),
+        ];
 
         let context = ScriptRunContext::default();
         let context = OutputMatchContext::new(&context);
