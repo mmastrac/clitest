@@ -211,7 +211,7 @@ impl ScriptV0Segment {
         }
     }
 
-    #[allow(unused)]
+    #[allow(dead_code)]
     pub fn last_location(&self) -> &ScriptLocation {
         match self {
             ScriptV0Segment::Block(block) => &block.lines.last().unwrap().location,
