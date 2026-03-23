@@ -152,3 +152,11 @@ pattern:
 $ echo "Hello, anything"
 ? Hello, %{GREEDYDATA}
 ```
+
+Expect a non-zero exit code:
+
+```shell
+$ cat nonexistent-file
+%EXIT fail
+*
+```

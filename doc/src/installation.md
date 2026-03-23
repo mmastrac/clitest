@@ -16,6 +16,28 @@ cargo install clitest
 
 This will download and compile clitest, making it available in your system's PATH.
 
+### Faster Install with cargo-binstall
+
+If you have [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)
+installed, you can download a pre-built binary instead of compiling from source:
+
+```bash
+cargo binstall clitest
+```
+
+### Installing in CI
+
+For GitHub Actions, the
+[cargo-install](https://github.com/baptiste0928/cargo-install) action provides
+caching out of the box:
+
+```yaml
+- name: Install clitest
+  uses: baptiste0928/cargo-install@v3
+  with:
+    crate: clitest
+```
+
 ## Verifying the Installation
 
 After installation, you can verify that *CLI/test* is properly installed by running:

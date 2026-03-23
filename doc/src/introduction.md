@@ -1,11 +1,12 @@
 # Introduction
 
-*CLI/test* is a new kind of CLI testing tool that allows you to write tests for
-command-line applications using a simple syntax. It was born from the
-frustration with existing shell testing approaches.
+*CLI/test* is a CLI testing tool that allows you to write tests for command-line
+applications using a simple, literate syntax. Unlike bash-based test frameworks,
+expected output sits right next to the command that produces it — so tests read
+like annotated terminal sessions.
 
-It provides various flexible ways to verify command outputs, handle exit codes,
-manage test environment variables, and juggle processes. Built on top of [Grok
+It provides flexible ways to verify command outputs, handle exit codes, manage
+environment variables, and juggle processes. Built on top of [Grok
 patterns](./grok-patterns.md), you can match complex patterns in the output with
 minimal effort.
 
