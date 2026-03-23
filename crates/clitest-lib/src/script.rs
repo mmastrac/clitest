@@ -554,9 +554,11 @@ impl ScriptKillReceiver {
                 use windows_sys::Win32::Foundation::CloseHandle;
                 use windows_sys::Win32::System::Threading::*;
 
-                // TODO: error handling
                 unsafe {
                     let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, thread_entry.thread_id);
+                    if thread.is_null() {
+                        return Err(std::io::Error::last_os_error().into());
+                    }
                     ResumeThread(thread);
                     CloseHandle(thread);
                 }
