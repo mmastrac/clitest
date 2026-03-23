@@ -792,9 +792,7 @@ impl OutputPatternType {
                                 output = v;
                                 continue 'outer;
                             }
-                            Err(_) => {
-                                continue;
-                            }
+                            Err(_) => {}
                         }
                     }
                     return Err(OutputPatternMatchFailure {
@@ -841,7 +839,6 @@ impl OutputPatternType {
                             let (line, next) = output.next(context.clone())?;
                             if line.is_some() {
                                 output = next;
-                                continue;
                             } else {
                                 break Err(e);
                             }
