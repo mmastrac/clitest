@@ -829,7 +829,7 @@ pub enum ScriptRunError {
 }
 
 impl ScriptRunError {
-    #[allow(unused)]
+    #[expect(unused)]
     pub fn short(&self) -> String {
         match self {
             Self::Pattern(_) => "Pattern".to_string(),
