@@ -423,7 +423,6 @@ impl Serialize for ShellBit {
     where
         S: serde::Serializer,
     {
-        // TODO
         match self {
             ShellBit::Literal(s) => serializer.serialize_str(s),
             ShellBit::Quoted(s) => serializer.serialize_str(s),
