@@ -212,7 +212,7 @@ fn munge_line(root: &str, tmp: &[&str], output: &mut String, line: &str) {
     }
 }
 
-fn munge_tmp(tmp: &str, output: &mut String, line: &String) {
+fn munge_tmp(tmp: &str, output: &mut String, line: &str) {
     let tmp_char = |c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.';
     let sep = if cfg!(windows) { '\\' } else { '/' };
 
