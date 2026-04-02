@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     sync::{Arc, Mutex, OnceLock},
 };
 
@@ -782,7 +782,7 @@ impl OutputPatternType {
             }
             OutputPatternType::Unordered(patterns) => {
                 // Found is initialized with 0..patterns.len()
-                let mut not_found = (0..patterns.len()).collect::<HashSet<_>>();
+                let mut not_found = (0..patterns.len()).collect::<BTreeSet<_>>();
                 'outer: while !not_found.is_empty() {
                     for pattern in &not_found {
                         let pattern = *pattern;
