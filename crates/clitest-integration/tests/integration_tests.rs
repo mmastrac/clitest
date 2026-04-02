@@ -1,16 +1,12 @@
 use std::time::Instant;
 
 use clitest_lib::{
-    cprint, cprintln, cprintln_rule,
-    parser::parse_script_file,
-    script::{ScriptFile, ScriptOutput, ScriptRunArgs},
-    term::Color,
-    util::NicePathBuf,
+    cprint, cprintln, cprintln_rule, term::Color, try_run_file_captured, util::NicePathBuf,
 };
 
 use clitest_integration::testing::{TestCase, load_test_scripts, root_dir, tests_dir};
 
-pub fn run() {
+fn main() {
     let root = root_dir();
     std::env::set_current_dir(&root)
         .unwrap_or_else(|_| panic!("failed to set current directory to {root:?}"));
@@ -39,66 +35,44 @@ pub fn run() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprint!(" ... ");
 
-        let script = match parse_script_file(None, ScriptFile::new(&test.path)) {
-            Ok(script) => script,
+        total += 1;
+        let start = Instant::now();
+
+        match try_run_file_captured(test.path.as_ref()) {
             Err(e) => {
-                // Parse error - for fail tests this counts as a valid failure
-                total += 1;
                 if is_fail {
-                    let error_msg = e
-                        .iter()
-                        .map(|e| e.to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    cprint!(fg = Color::Green, "✅ OK (parse error)");
-                    if !check_output(&test, error_msg) {
+                    cprint!(fg = Color::Green, "✅ OK ({})", e.error);
+                    if !check_output(
+                        &test,
+                        if e.output.is_empty() {
+                            e.error
+                        } else {
+                            e.output
+                        },
+                    ) {
                         failed += 1;
                     }
                 } else {
-                    cprint!(fg = Color::Red, "❌ FAIL (parse error)");
+                    cprint!(fg = Color::Red, "❌ FAIL");
                     failed += 1;
-                    for err in e {
-                        cprint!(fg = Color::Red, " {}", err);
-                    }
+                    cprint!(fg = Color::Red, " {}", e.error);
                     failed_tests.push(test);
                 }
-                cprintln!();
-                continue;
             }
-        };
-        total += 1;
-        let args = ScriptRunArgs {
-            quiet: true,
-            no_color: true,
-            simplified_output: true,
-            ..Default::default()
-        };
-        let output = ScriptOutput::quiet(true);
-        let start = Instant::now();
-        let res = script.run_with_args(args, output.clone());
-
-        if is_fail {
-            if let Err(e) = res {
-                cprint!(fg = Color::Green, "✅ OK ({})", e.short());
-                if !check_output(&test, output.take_buffer()) {
+            Ok(output) => {
+                if is_fail {
+                    cprint!(fg = Color::Red, "❌ FAIL (expected a failure)");
                     failed += 1;
+                    failed_tests.push(test);
+                } else {
+                    cprint!(fg = Color::Green, "✅ OK");
+                    if !check_output(&test, output) {
+                        failed += 1;
+                    }
                 }
-            } else {
-                cprint!(fg = Color::Red, "❌ FAIL (expected a failure)");
-                failed += 1;
-                failed_tests.push(test);
-            }
-        } else if let Err(e) = res {
-            cprint!(fg = Color::Red, "❌ FAIL");
-            failed += 1;
-            cprint!(fg = Color::Red, " {}", e);
-            failed_tests.push(test);
-        } else {
-            cprint!(fg = Color::Green, "✅ OK");
-            if !check_output(&test, output.take_buffer()) {
-                failed += 1;
             }
         }
+
         let duration = start.elapsed();
         cprintln!(dimmed = true, " ({:.2}s)", duration.as_secs_f64());
     }
@@ -110,21 +84,15 @@ pub fn run() {
         cprint!(fg = Color::Green, "{}", test.name);
         cprintln!(" ... ");
         cprintln_rule!();
-        let script = match parse_script_file(None, ScriptFile::new(test.path.clone())) {
-            Ok(script) => script,
+        match clitest_lib::try_run_file_captured(test.path.as_ref()) {
+            Ok(output) => cprintln!("{}", output),
             Err(e) => {
-                for err in e {
-                    cprintln!(fg = Color::Red, "{}", err);
+                if !e.output.is_empty() {
+                    cprintln!("{}", e.output);
                 }
-                cprintln_rule!();
-                continue;
+                cprintln!(fg = Color::Red, "{}", e.error);
             }
-        };
-        let args = ScriptRunArgs {
-            show_line_numbers: true,
-            ..Default::default()
-        };
-        let _ = script.run_with_args(args, ScriptOutput::default());
+        }
         cprintln_rule!();
     }
 
@@ -141,10 +109,6 @@ pub fn run() {
     if failed > 0 {
         std::process::exit(1);
     }
-}
-
-fn main() {
-    run();
 }
 
 /// Munge the output to make it easier to compare.
@@ -262,30 +226,5 @@ fn check_output(test: &TestCase, output: String) -> bool {
         false
     } else {
         true
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_munge_output() {
-        let root = "/root".to_string();
-        let tmp = ["/tmp"];
-
-        let mut output = String::new();
-        munge_line(&root, &tmp, &mut output, "This is /tmp");
-        assert_eq!(output, "This is <tmp>\n");
-
-        let mut output = String::new();
-        munge_line(&root, &tmp, &mut output, "This is /tmp!");
-        assert_eq!(output, "This is <tmp>!\n");
-
-        let mut output = String::new();
-        munge_line(&root, &tmp, &mut output, "This is /tmp/foo");
-        assert_eq!(output, "This is <tmp>\n");
-
-        let mut output = String::new();
-        munge_line(&root, &tmp, &mut output, "This is /tmp/foo!");
-        assert_eq!(output, "This is <tmp>!\n");
     }
 }

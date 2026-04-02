@@ -1725,7 +1725,9 @@ impl ScriptResult {
                     self.command.command
                 );
                 cwriteln!(context.stream());
-                return Err(ScriptRunError::ExpectedFailure(self.command.location.clone()));
+                return Err(ScriptRunError::ExpectedFailure(
+                    self.command.location.clone(),
+                ));
             }
         }
 

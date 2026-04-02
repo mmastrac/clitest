@@ -13,3 +13,4 @@ dunce.workspace = true
 [[test]]
 name = "integration_tests"
 harness = false
+
