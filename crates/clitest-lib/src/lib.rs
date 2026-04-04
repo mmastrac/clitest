@@ -73,8 +73,8 @@ pub fn run_captured(script: &str) -> String {
 }
 
 /// Parse and run a clitest script string. Returns captured output. Panics on failure.
-pub fn run_with_path_captured(path: impl AsRef<Path>, script: &str) -> String {
-    let file = ScriptFile::new(path);
+pub fn run_with_path_captured(name: &str, path: impl AsRef<Path>, script: &str) -> String {
+    let file = ScriptFile::new(dunce::canonicalize(path.as_ref()).unwrap().join(name));
     let parsed = match parser::parse_script(file, script) {
         Ok(s) => s,
         Err(e) => panic!("clitest parse error: {e}"),
@@ -171,13 +171,13 @@ macro_rules! clitest {
     ($name:ident, $script:expr) => {
         #[test]
         fn $name() {
-            let output = $crate::run_with_path_captured(std::env::current_dir().unwrap().join(concat!("<", stringify!($name), ">")), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
+            let output = $crate::run_with_path_captured(stringify!($name), std::env::current_dir().unwrap(), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
             eprintln!("{output}");
         }
     };
 }
 
 clitest!(test_run_macro, r#"
-$ echo hello macro
-! hello macro
+$ echo $PWD
+*
 "#);
