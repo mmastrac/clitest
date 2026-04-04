@@ -140,9 +140,9 @@ pub fn try_run_file_captured(path: impl AsRef<Path>) -> Result<String, RunError>
     }
 }
 
-/// Generate `#[test]` functions from inline clitest scripts.
-///
-/// The `#!/usr/bin/env clitest --v0` header is automatically prepended.
+/// Generate `#[test]` functions from inline clitest scripts. The `PWD` for the
+/// script is set to the current directory, which for `cargo test` is the root
+/// of the crate.
 ///
 /// ```rust
 /// use clitest_lib::clitest;
@@ -157,7 +157,7 @@ macro_rules! clitest {
     ($name:ident, $script:expr) => {
         #[test]
         fn $name() {
-            $crate::run_with_path(file!(), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
+            $crate::run_with_path(std::env::current_dir().unwrap(), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
         }
     };
 }
