@@ -82,7 +82,7 @@ pub fn run_with_path_captured(path: impl AsRef<Path>, script: &str) -> String {
     let output = ScriptOutput::quiet(true);
     match execute(&parsed, output.clone()) {
         Ok(()) => output.take_buffer(),
-        Err(e) => panic!("clitest failed: {e}"),
+        Err(e) => panic!("clitest failed: {e}\n\nOutput:\n{}", output.take_buffer()),
     }
 }
 
@@ -171,7 +171,7 @@ macro_rules! clitest {
     ($name:ident, $script:expr) => {
         #[test]
         fn $name() {
-            let output = $crate::run_with_path_captured(std::env::current_dir().unwrap(), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
+            let output = $crate::run_with_path_captured(std::env::current_dir().unwrap().join(concat!("<", stringify!($name), ">")), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
             eprintln!("{output}");
         }
     };
