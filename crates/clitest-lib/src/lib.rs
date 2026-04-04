@@ -180,4 +180,7 @@ macro_rules! clitest {
 clitest!(test_run_macro, r#"
 $ echo $PWD
 *
+cd "src/parser";
+$ echo $PWD
+*
 "#);

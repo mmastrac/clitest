@@ -112,9 +112,10 @@ impl ScriptEnv {
         );
 
         // Set the current working directory as a special variable "PWD"
+        let pwd = NicePathBuf::from(pwd.as_ref()).env_string();
         self.env_vars.insert(
             "PWD".to_string(),
-            NicePathBuf::from(pwd.as_ref()).env_string(),
+            pwd,
         );
         // Save the initial PWD as INITIAL_PWD so it can easily be restored
         self.env_vars
@@ -1393,6 +1394,12 @@ impl InternalCommand {
                 cwriteln!(context.stream());
                 let current_pwd = context.pwd();
                 let new_pwd = current_pwd.join(dir);
+                if !new_pwd.exists()? {
+                    return Err(ScriptRunError::IO(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("directory does not exist: {new_pwd}"),
+                    )));
+                }
                 context.set_pwd(new_pwd);
                 Ok(None)
             }
