@@ -42,9 +42,22 @@ fn execute(parsed: &script::Script, output: ScriptOutput) -> Result<(), ScriptRu
     parsed.run_with_args(make_args(), output)
 }
 
+fn get_inline_file() -> ScriptFile {
+    ScriptFile::new(std::env::current_dir().unwrap().join("<inline>"))
+}
+
 /// Parse and run a clitest script string. Output goes to stdout. Panics on failure.
 pub fn run(script: &str) {
-    let file = ScriptFile::new("<inline>");
+    let file = get_inline_file();
+    let parsed =
+        parser::parse_script(file, script).unwrap_or_else(|e| panic!("clitest parse error: {e}"));
+    let output = ScriptOutput::no_color();
+    execute(&parsed, output).unwrap_or_else(|e| panic!("clitest failed: {e}"));
+}
+
+/// Parse and run a clitest script string. Output goes to stdout. Panics on failure.
+pub fn run_with_path(path: impl AsRef<Path>, script: &str) {
+    let file = ScriptFile::new(path);
     let parsed =
         parser::parse_script(file, script).unwrap_or_else(|e| panic!("clitest parse error: {e}"));
     let output = ScriptOutput::no_color();
@@ -62,7 +75,7 @@ pub fn run_captured(script: &str) -> String {
 /// Parse and run a clitest script string. Returns `Ok(output)` on success,
 /// or `Err(RunError)` with both the error message and captured output on failure.
 pub fn try_run_captured(script: &str) -> Result<String, RunError> {
-    let file = ScriptFile::new("<inline>");
+    let file = get_inline_file();
     let parsed = match parser::parse_script(file, script) {
         Ok(s) => s,
         Err(e) => {
@@ -144,7 +157,7 @@ macro_rules! clitest {
     ($name:ident, $script:expr) => {
         #[test]
         fn $name() {
-            $crate::run(&format!("#!/usr/bin/env clitest --v0\n{}", $script));
+            $crate::run_with_path(file!(), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
         }
     };
 }
