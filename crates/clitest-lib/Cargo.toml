@@ -8,12 +8,16 @@ description = "CLI-based testing library."
 repository = "https://github.com/mmastrac/clitest"
 readme = "../../README.md"
 
+[features]
+default = ["onig"]
+fancy-regex = ["grok/fancy-regex"]
+onig = ["grok/onig"]
+
 [dependencies]
 clap = { workspace = true, features = ["derive"] }
 shellish_parse.workspace = true
 thiserror.workspace = true
 grok.workspace = true
-onig.workspace = true
 derive_more = { workspace = true, features = ["display", "debug", "error", "is_variant", "unwrap"] }
 termcolor.workspace = true
 termsize.workspace = true
