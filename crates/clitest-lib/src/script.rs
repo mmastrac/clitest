@@ -102,21 +102,60 @@ impl ScriptEnv {
         target!(
             TARGET_OS,
             target_os,
-            ["windows", "linux", "macos", "ios", "android"]
+            [
+                "windows",
+                "linux",
+                "macos",
+                "ios",
+                "android",
+                "freebsd",
+                "netbsd",
+                "openbsd",
+                "dragonfly",
+                "haiku",
+                "aix"
+            ]
         );
         target!(TARGET_FAMILY, target_family, ["windows", "unix", "wasm"]);
         target!(
             TARGET_ARCH,
             target_arch,
-            ["x86", "x86_64", "arm", "aarch64"]
+            [
+                "aarch64",
+                "amdgpu",
+                "arm",
+                "arm64ec",
+                "avr",
+                "bpf",
+                "csky",
+                "hexagon",
+                "loongarch32",
+                "loongarch64",
+                "m68k",
+                "mips",
+                "mips32r6",
+                "mips64",
+                "mips64r6",
+                "msp430",
+                "nvptx64",
+                "powerpc",
+                "powerpc64",
+                "riscv32",
+                "riscv64",
+                "s390x",
+                "sparc",
+                "sparc64",
+                "wasm32",
+                "wasm64",
+                "x86",
+                "x86_64",
+                "xtensa"
+            ]
         );
 
         // Set the current working directory as a special variable "PWD"
         let pwd = NicePathBuf::from(pwd.as_ref()).env_string();
-        self.env_vars.insert(
-            "PWD".to_string(),
-            pwd,
-        );
+        self.env_vars.insert("PWD".to_string(), pwd);
         // Save the initial PWD as INITIAL_PWD so it can easily be restored
         self.env_vars
             .insert("INITIAL_PWD".to_string(), self.env_vars["PWD"].clone());
