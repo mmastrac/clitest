@@ -171,16 +171,23 @@ macro_rules! clitest {
     ($name:ident, $script:expr) => {
         #[test]
         fn $name() {
-            let output = $crate::run_with_path_captured(stringify!($name), std::env::current_dir().unwrap(), &format!("#!/usr/bin/env clitest --v0\n{}", $script));
+            let output = $crate::run_with_path_captured(
+                stringify!($name),
+                std::env::current_dir().unwrap(),
+                &format!("#!/usr/bin/env clitest --v0\n{}", $script),
+            );
             eprintln!("{output}");
         }
     };
 }
 
-clitest!(test_run_macro, r#"
+clitest!(
+    test_run_macro,
+    r#"
 $ echo $PWD
 *
 cd "src/parser";
 $ echo $PWD
 *
-"#);
+"#
+);
