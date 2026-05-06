@@ -68,6 +68,7 @@ The working directory is managed through a special variable `PWD`. This can be s
 Change the current working directory. The `PWD` is updated to the new directory for the duration of the test, unless another command changes it:
 
 ```bash session
+$ mkdir "subdir";
 cd "subdir";
 ```
 
