@@ -1,6 +1,6 @@
 Running <root>/windows_line_ending.cli ...
 
-printf "hello\r\nworld\r\n"
+awk 'BEGIN{printf "hello\r\nworld\r\n"}' > windows_line_ending.bin; cat windows_line_ending.bin
 ---
 hello
 world
