@@ -1,4 +1,4 @@
-Running <root>/tests/v0/windows_line_ending.cli ...
+Running <root>/windows_line_ending.cli ...
 
 printf "hello\r\nworld\r\n"
 ---
@@ -7,4 +7,4 @@ world
 ---
 ✅ OK
 
-<root>/tests/v0/windows_line_ending.cli PASSED
+<root>/windows_line_ending.cli PASSED
