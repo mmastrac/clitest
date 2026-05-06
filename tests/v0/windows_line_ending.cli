@@ -1,0 +1,5 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "hello\r\nworld\r\n"
+! hello
+! world
