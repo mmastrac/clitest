@@ -10,6 +10,7 @@ readme = "../../README.md"
 
 [features]
 default = ["onig"]
+
 fancy-regex = ["grok/fancy-regex"]
 onig = ["grok/onig"]
 

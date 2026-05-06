@@ -10,7 +10,7 @@ and this project adheres to
 
 ### Fixed
 - Windows paths for cwd-based paths use the proper slash.
-
+- `clitest!` macro will print the real line number of the macro's embedding location.
 
 ## [0.4.7] - 2026-04-27
 
