@@ -6,6 +6,90 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-04-27
+
+### Fixed
+- Pinned `signal-child` to avoid broken macOS releases.
+
+## [0.4.6] - 2026-04-27
+
+### Added
+- Additional `target_os` / `target_arch` support.
+
+### Changed
+- Dependency updates (including `clap` and `signal-child`).
+
+## [0.4.5] - 2026-04-13
+
+### Added
+- Downstream grok feature selection (`onig` vs `fancy-regex`) via `clitest-lib` features.
+
+## [0.4.4] - 2026-04-04
+
+### Changed
+- Improved path handling for cwd-based paths.
+
+## [0.4.3] - 2026-04-04
+
+### Changed
+- Canonicalized `PWD` handling.
+
+## [0.4.2] - 2026-04-04
+
+### Changed
+- Print captured output on panic.
+
+## [0.4.1] - 2026-04-04
+
+### Added
+- Capture output for later reporting.
+
+## [0.4.0] - 2026-04-04
+
+### Fixed
+- `PWD` handling fixes.
+
+## [0.3.1] - 2026-04-04
+
+### Added
+- `clitest` macro now uses the current file by default.
+
+## [0.3.0] - 2026-04-02
+
+### Added
+- Testing utilities added to `clitest-lib`.
+
+## [0.2.7] - 2026-04-02
+
+### Fixed
+- `unordered` output matching is no longer random.
+
+### Changed
+- Test coverage improvements across block types.
+- Misc cleanup, docs fixes, and Windows robustness improvements.
+
+## [0.2.6] - 2026-03-22
+
+### Fixed
+- Timeout/exit errors now include file locations.
+
+### Changed
+- Dependency bumps and clippy cleanup.
+
+## [0.2.5] - 2026-01-16
+
+### Added
+- `--help-syntax` cheatsheet.
+
+### Changed
+- Documentation consistency improvements.
+
+## [0.2.4] - 2026-01-16
+
+### Changed
+- Improved invalid header errors.
+- Made `%EXIT` / `pattern` ordering clearer.
+
 ## [0.2.3] - 2025-08-26
 
 ### Fixed
