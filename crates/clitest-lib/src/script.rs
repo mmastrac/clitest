@@ -13,8 +13,7 @@ use serde::{Serialize, ser::SerializeMap};
 use termcolor::{Color, ColorChoice, WriteColor};
 
 use crate::{
-    command::{CommandLine, CommandResult},
-    util::{NicePathBuf, NiceTempDir},
+    command::{CommandLine, CommandResult}, failure::OutputPatternMatchFailure, util::{NicePathBuf, NiceTempDir}
 };
 use crate::{cwrite, cwriteln, cwriteln_rule};
 use crate::{output::*, util::ShellBit};

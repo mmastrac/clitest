@@ -6,10 +6,10 @@ goodbye
 world
 ---
 ERROR: pattern not at line <root>/not.cli:4 does not match output line "goodbye"
-matching Sequence([Not(Literal(goodbye)), Literal(hello), Literal(world), End])
-  matching Not(Literal(goodbye))
-    matching Literal(goodbye)
-    literal match: "goodbye" == "goodbye"
+matching Sequence([Not("goodbye"), "hello", "world", End])
+  matching Not("goodbye")
+    matching "goodbye"
+    match: "goodbye"
 
 ❌ FAIL
 

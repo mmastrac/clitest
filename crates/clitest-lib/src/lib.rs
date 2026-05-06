@@ -6,6 +6,7 @@ pub mod parser;
 pub mod script;
 pub mod term;
 pub mod util;
+pub mod failure;
 
 use std::path::Path;
 

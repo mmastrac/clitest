@@ -6,7 +6,8 @@ use std::{
 use grok::Grok;
 use serde::Serialize;
 
-use crate::script::{IfCondition, ScriptLocation, ScriptRunContext};
+use crate::{failure::{OutputMatchTrace, OutputMatchTraceLine}, script::{IfCondition, ScriptLocation, ScriptRunContext}};
+use crate::failure::OutputPatternMatchFailure;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -454,7 +455,7 @@ impl Default for OutputPatternType {
 impl std::fmt::Debug for OutputPatternType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OutputPatternType::Literal(literal) => write!(f, "Literal({literal})"),
+            OutputPatternType::Literal(literal) => write!(f, "{literal:?}"),
             OutputPatternType::Pattern(pattern) => write!(f, "Pattern({pattern:?})"),
             OutputPatternType::Repeat(pattern) => write!(f, "Repeat({pattern:?})"),
             OutputPatternType::Optional(pattern) => write!(f, "Optional({pattern:?})"),
@@ -560,35 +561,10 @@ impl GrokPattern {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
-#[display("pattern {pattern_type} at line {location} {verb} output line {line:?}", verb = self.verb(), line = self.line())]
-pub struct OutputPatternMatchFailure {
-    pub location: ScriptLocation,
-    pub pattern_type: &'static str,
-    pub output_line: Option<Line>,
-}
-
-impl OutputPatternMatchFailure {
-    fn verb(&self) -> &'static str {
-        if self.pattern_type == "reject" {
-            "rejected"
-        } else {
-            "does not match"
-        }
-    }
-
-    fn line(&self) -> String {
-        self.output_line
-            .as_ref()
-            .map(|l| l.text.clone())
-            .unwrap_or("<eof>".to_string())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct OutputMatchContext<'s> {
     depth: usize,
-    trace: Arc<Mutex<Vec<String>>>,
+    trace: Arc<Mutex<Vec<OutputMatchTraceLine>>>,
     ignore: bool,
     expectations: Arc<Mutex<HashMap<String, String>>>,
     script_context: &'s ScriptRunContext,
@@ -625,17 +601,15 @@ impl<'s> OutputMatchContext<'s> {
         }
     }
 
-    pub fn trace(&self, line: &str) {
-        let ignore = if self.ignore { "-" } else { "" };
-        self.trace.lock().unwrap().push(format!(
-            "{:indent$}{ignore}{}",
-            "",
-            line,
-            indent = self.depth * 2
-        ));
+    pub fn trace(&self, trace: OutputMatchTrace) {
+        self.trace.lock().unwrap().push(OutputMatchTraceLine {
+            indent: self.depth * 2,
+            ignore: self.ignore,
+            trace,
+        });
     }
 
-    pub fn traces(&self) -> Vec<String> {
+    pub fn traces(&self) -> Vec<OutputMatchTraceLine> {
         std::mem::take(&mut self.trace.lock().unwrap())
     }
 
@@ -658,7 +632,7 @@ impl OutputPatternType {
         context: OutputMatchContext,
         mut output: Lines,
     ) -> Result<Lines, OutputPatternMatchFailure> {
-        context.trace(&format!("matching {self:?}"));
+        context.trace(OutputMatchTrace::Matching(self.clone()));
         match self {
             OutputPatternType::None => Ok(output),
             OutputPatternType::Literal(literal) => {
@@ -666,18 +640,15 @@ impl OutputPatternType {
                 if let Some(line) = line {
                     let text = line.text.trim_end();
                     if text == literal {
-                        context.trace(&format!("literal match: {:?} == {literal:?}", line.text));
+                        context.trace(OutputMatchTrace::Match(line.clone()));
                         Ok(next)
                     } else if line.text.contains('\x1b')
                         && fast_strip_ansi::strip_ansi_string(&line.text).as_ref() == literal
                     {
-                        context.trace(&format!("literal match: {text:?} == {literal:?}"));
+                        context.trace(OutputMatchTrace::Match(line.clone()));
                         Ok(next)
                     } else {
-                        context.trace(&format!(
-                            "literal FAILED match: {:?} == {literal:?}",
-                            line.text
-                        ));
+                        context.trace(OutputMatchTrace::NoMatch(line.clone()));
                         Err(OutputPatternMatchFailure {
                             location: location.clone(),
                             pattern_type: "literal",
@@ -715,9 +686,7 @@ impl OutputPatternType {
                                 if let Some(existing) = existing
                                     && existing != value
                                 {
-                                    context.trace(&format!(
-                                        "pattern alias FAILED match: {existing:?} != {value:?}",
-                                    ));
+                                    context.trace(OutputMatchTrace::AliasFailed(existing, value.to_string()));
                                     return Err(OutputPatternMatchFailure {
                                         location: location.clone(),
                                         pattern_type: "pattern",
@@ -726,13 +695,10 @@ impl OutputPatternType {
                                 }
                             }
                         }
-                        context.trace(&format!("pattern match: {:?} =~ {pattern:?}", line.text));
+                        context.trace(OutputMatchTrace::Match(line.clone()));
                         Ok(next)
                     } else {
-                        context.trace(&format!(
-                            "pattern FAILED match: {:?} =~ {pattern:?}",
-                            line.text
-                        ));
+                        context.trace(OutputMatchTrace::NoMatch(line.clone()));
                         Err(OutputPatternMatchFailure {
                             location: location.clone(),
                             pattern_type: "pattern",
@@ -848,10 +814,10 @@ impl OutputPatternType {
             }
             OutputPatternType::If(condition, pattern) => {
                 if condition.matches(context.script_context) {
-                    context.trace(&format!("if match: {condition:?}"));
+                    context.trace(OutputMatchTrace::IfMatch(condition.clone()));
                     pattern.matches(context.clone(), output.clone())
                 } else {
-                    context.trace(&format!("if FAILED match: {condition:?}"));
+                    context.trace(OutputMatchTrace::IfNoMatch(condition.clone()));
                     Ok(output)
                 }
             }

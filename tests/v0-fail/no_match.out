@@ -5,9 +5,9 @@ printf "hello\n"
 hello
 ---
 ERROR: pattern literal at line <root>/no_match.cli:4 does not match output line "hello"
-matching Sequence([Literal(bye), End])
-  matching Literal(bye)
-  literal FAILED match: "hello" == "bye"
+matching Sequence(["bye", End])
+  matching "bye"
+  FAILED match: "hello"
 
 ❌ FAIL
 

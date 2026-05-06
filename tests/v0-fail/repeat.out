@@ -5,10 +5,10 @@ printf "hello\n"
 hello
 ---
 ERROR: pattern literal at line <root>/repeat.cli:5 does not match output line "hello"
-matching Sequence([Repeat(Literal(goodbye)), End])
-  matching Repeat(Literal(goodbye))
-    matching Literal(goodbye)
-    literal FAILED match: "hello" == "goodbye"
+matching Sequence([Repeat("goodbye"), End])
+  matching Repeat("goodbye")
+    matching "goodbye"
+    FAILED match: "hello"
 
 ❌ FAIL
 

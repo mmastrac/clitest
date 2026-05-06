@@ -5,11 +5,11 @@ printf "hello\n"
 hello
 ---
 ERROR: pattern literal at line <root>/optional.cli:7 does not match output line "<eof>"
-matching Sequence([Optional(Literal(hello)), Literal(hello), End])
-  matching Optional(Literal(hello))
-    matching Literal(hello)
-    literal match: "hello" == "hello"
-  matching Literal(hello)
+matching Sequence([Optional("hello"), "hello", End])
+  matching Optional("hello")
+    matching "hello"
+    match: "hello"
+  matching "hello"
 
 ❌ FAIL
 

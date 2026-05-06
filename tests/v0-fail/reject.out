@@ -7,10 +7,10 @@ hello
 ERROR: pattern reject at line <root>/reject.cli:5 rejected output line "hello"
 matching Any(End)
   matching End
-  -matching Literal(hello)
-  -literal match: "hello" == "hello"
--matching Literal(hello)
--literal match: "hello" == "hello"
+  -matching "hello" (ignore)
+  -match: "hello" (ignore)
+-matching "hello" (ignore)
+-match: "hello" (ignore)
 
 ❌ FAIL
 
