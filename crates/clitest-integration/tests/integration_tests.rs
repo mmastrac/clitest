@@ -219,7 +219,7 @@ fn check_output(test: &TestCase, output: String) -> bool {
         let comparison = pretty_assertions::StrComparison::new(&a, &b);
         println!("{comparison}");
         cprintln_rule!();
-        cprintln!("\nOriginal output before munge:");
+        cprintln!("\nOriginal output before munge (root = {root:?}):");
         cprintln_rule!();
         cprintln!("{}", output);
         cprintln_rule!();

@@ -44,12 +44,20 @@ impl std::fmt::Display for ScriptLocation {
 )]
 #[display("{}", file)]
 pub struct ScriptFile {
+    pub base_line: usize,
     pub file: Arc<NicePathBuf>,
 }
 
 impl ScriptFile {
     pub fn new(file: impl AsRef<Path>) -> Self {
         Self {
+            base_line: 0,
+            file: Arc::new(NicePathBuf::new(file)),
+        }
+    }
+    pub fn new_with_line(file: impl AsRef<Path>, line: usize) -> Self {
+        Self {
+            base_line: line,
             file: Arc::new(NicePathBuf::new(file)),
         }
     }
@@ -726,7 +734,7 @@ impl ScriptLine {
             .lines()
             .enumerate()
             .map(|(line, text)| Self {
-                location: ScriptLocation::new(file.clone(), line + 1),
+                location: ScriptLocation::new(file.clone(), line + file.base_line + 1),
                 text: text.to_string(),
             })
             .collect()

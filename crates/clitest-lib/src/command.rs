@@ -122,6 +122,9 @@ impl CommandLine {
                     if line.ends_with('\n') {
                         line.pop();
                     }
+                    if line.ends_with('\r') {
+                        line.pop();
+                    }
                     _ = stdout_lines.send((true, std::mem::take(&mut line)));
                 }
             });
@@ -136,6 +139,9 @@ impl CommandLine {
                         continue;
                     }
                     if line.ends_with('\n') {
+                        line.pop();
+                    }
+                    if line.ends_with('\r') {
                         line.pop();
                     }
                     _ = stderr_lines.send((false, std::mem::take(&mut line)));

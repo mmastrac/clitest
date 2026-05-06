@@ -284,6 +284,9 @@ fn write_pretty_path(
         if debug {
             write_debug_path(f, path)?;
         } else {
+            #[cfg(windows)]
+            write!(f, ".\\{}", path.display())?;
+            #[cfg(not(windows))]
             write!(f, "./{}", path.display())?;
         }
         return Ok(());
