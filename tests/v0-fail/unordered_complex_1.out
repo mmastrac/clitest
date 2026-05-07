@@ -1,0 +1,31 @@
+Running <root>/unordered_complex_1.cli ...
+
+printf "a,b,c,u1,u2bad,u3,repeat" | tr ',' '\n'
+---
+a
+b
+c
+u1
+u2bad
+u3
+repeat
+---
+ERROR: pattern unordered at line <root>/unordered_complex_1.cli:4 does not match output line "u1"
+[XX] missed sequence { ... }
+  [XX] missed unordered { ... }
+    [OK] matched sequence { ... }
+      [OK] matched "a"
+      [OK] matched "b"
+      [OK] matched "c"
+    [XX] missed unordered { ... }
+      [OK] matched "u1"
+      [XX] missed "u2" != "u2bad"
+      [XX] missed "u3" != "u2bad"
+    [XX] missed repeat { ... }
+      [XX] missed "repeat" != "u1"
+
+❌ FAIL
+
+<root>/unordered_complex_1.cli FAILED
+Error: pattern unordered at line <root>/unordered_complex_1.cli:4 does not match output line "u1"
+

@@ -1,0 +1,16 @@
+#!/usr/bin/env clitest --v0
+
+$ printf '{"name": "Alice"}\n{"name": "Mary"}\n{"name": "John"}\n'
+%EXPECT_FAILURE
+! {"name": "Alice"}
+! {"name": "Bob"}
+! {"name": "John"}
+! {"name": "Mary"}
+
+$ printf '{"name": "Alice"}\n{"name": "Mary"}\n{"name": "John"}\n'
+! {"name": "Alice"}
+unordered {
+    ! {"name": "Bob"}
+    ! {"name": "John"}
+    ! {"name": "Mary"}
+}

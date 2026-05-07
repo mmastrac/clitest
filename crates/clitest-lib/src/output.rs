@@ -654,6 +654,14 @@ impl OutputMatchTraceCollector {
         node.note = note;
     }
 
+    fn pop_traces_before_last(&mut self, count: usize) {
+        let trace = self.navigate_mut().pop().expect("no trace to pop");
+        for _ in 0..count {
+            self.navigate_mut().pop().expect("no trace to pop");
+        }
+        self.navigate_mut().push(trace);
+    }
+
     fn leaf_pattern(&mut self, node: OutputMatchTraceNode) {
         let list = self.navigate_mut();
         list.push(node);
@@ -960,15 +968,19 @@ impl OutputPatternType {
             OutputPatternType::Unordered(patterns) => {
                 let mut not_found = (0..patterns.len()).collect::<BTreeSet<_>>();
                 'outer: while !not_found.is_empty() {
+                    let mut cleanup = 0;
                     for idx in &not_found {
                         let idx = *idx;
                         match patterns[idx].matches(context.descend(), output.clone()) {
                             Ok(v) => {
                                 not_found.remove(&idx);
                                 output = v;
+                                context.trace.lock().unwrap().pop_traces_before_last(cleanup);
                                 continue 'outer;
                             }
-                            Err(_) => {}
+                            Err(_) => {
+                                cleanup += 1;
+                            }
                         }
                     }
                     return raw_err(
