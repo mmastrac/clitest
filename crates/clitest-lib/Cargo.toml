@@ -15,7 +15,6 @@ fancy-regex = ["grok/fancy-regex"]
 onig = ["grok/onig"]
 
 [dependencies]
-clap = { workspace = true, features = ["derive"] }
 shellish_parse.workspace = true
 thiserror.workspace = true
 grok.workspace = true
@@ -23,19 +22,14 @@ derive_more = { workspace = true, features = ["display", "debug", "error", "is_v
 termcolor.workspace = true
 termsize.workspace = true
 serde = { workspace = true, features = ["derive", "rc"] }
-serde_json.workspace = true
 unicode-width.workspace = true
 unicode-segmentation.workspace = true
 dirs.workspace = true
-pathdiff.workspace = true
-toml.workspace = true
-serde_yaml.workspace = true
 signal-child.workspace = true
 utf8-supported.workspace = true
 tempfile.workspace = true
 keepcalm.workspace = true
 derive-io.workspace = true
-unflatter.workspace = true
 dunce.workspace = true
 humantime.workspace = true
 fast-strip-ansi.workspace = true
