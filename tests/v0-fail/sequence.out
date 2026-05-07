@@ -6,10 +6,9 @@ b
 a
 ---
 ERROR: pattern literal at line <root>/sequence.cli:5 does not match output line "b"
-matching Sequence([Sequence(["a", "b"]), End])
-  matching Sequence(["a", "b"])
-    matching "a"
-    FAILED match: "b"
+[XX] missed sequence { ... }
+  [XX] missed sequence { ... }
+    [XX] missed "a" != "b"
 
 ❌ FAIL
 

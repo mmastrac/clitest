@@ -5,14 +5,11 @@ printf "hello\n"
 hello
 ---
 ERROR: pattern choice at line <root>/choice.cli:4 does not match output line "hello"
-matching Sequence([Choice(["foo", "bar", "baz"]), End])
-  matching Choice(["foo", "bar", "baz"])
-    matching "foo"
-    FAILED match: "hello"
-    matching "bar"
-    FAILED match: "hello"
-    matching "baz"
-    FAILED match: "hello"
+[XX] missed sequence { ... }
+  [XX] missed choice { ... }
+    [XX] missed "foo" != "hello"
+    [XX] missed "bar" != "hello"
+    [XX] missed "baz" != "hello"
 
 ❌ FAIL
 

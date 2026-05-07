@@ -5,12 +5,10 @@ printf "hello\n"
 hello
 ---
 ERROR: pattern reject at line <root>/reject.cli:5 rejected output line "hello"
-matching Any(End)
-  matching End
-  -matching "hello" (ignore)
-  -match: "hello" (ignore)
--matching "hello" (ignore)
--match: "hello" (ignore)
+[XX] missed Any(End) != "hello"
+  [OK]- matched "hello" (ignore)
+  [XX] missed End
+  [OK]- matched "hello" (ignore)
 
 ❌ FAIL
 
