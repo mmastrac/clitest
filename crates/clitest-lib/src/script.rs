@@ -14,7 +14,7 @@ use termcolor::{Color, ColorChoice, WriteColor};
 
 use crate::{
     command::{CommandLine, CommandResult},
-    failure::{format_match_trace_tree, OutputPatternMatchFailure},
+    failure::{OutputPatternMatchFailure, format_match_trace_tree},
     util::{NicePathBuf, NiceTempDir},
 };
 use crate::{cwrite, cwriteln, cwriteln_rule};

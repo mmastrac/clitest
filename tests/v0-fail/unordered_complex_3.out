@@ -29,7 +29,7 @@ ERROR: pattern end at line <root>/unordered_complex_3.cli:3 does not match outpu
       [OK] matched "u1"
       [OK] matched "u2"
       [OK] matched "u3"
-  [XX] missed End
+  [XX] missed <eof> != "repeat"
 
 ❌ FAIL
 

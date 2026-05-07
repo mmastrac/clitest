@@ -6,11 +6,11 @@ use std::{
 use grok::Grok;
 use serde::Serialize;
 
+use crate::failure::OutputPatternMatchFailure;
 use crate::{
     failure::{OutputMatchTraceNode, PatternTraceNote},
     script::{IfCondition, ScriptLocation, ScriptRunContext},
 };
-use crate::failure::OutputPatternMatchFailure;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -481,6 +481,30 @@ impl OutputPatternType {
             OutputPatternType::None => false,
         }
     }
+
+    pub fn trace_string(&self) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        _ = match self {
+            OutputPatternType::Any(pattern) => {
+                if let OutputPatternType::End = pattern.pattern {
+                    write!(out, "*")
+                } else {
+                    write!(out, "* ... {}", pattern.pattern.trace_string())
+                }
+            }
+            OutputPatternType::End => {
+                write!(out, "<eof>")
+            }
+            _ if self.is_container() => {
+                write!(out, "{} {{ ... }}", self.keyword())
+            }
+            _ => {
+                write!(out, "{:?}", self)
+            }
+        };
+        out
+    }
 }
 
 impl Default for OutputPatternType {
@@ -647,7 +671,10 @@ impl OutputMatchTraceCollector {
         output_line: Option<Line>,
         note: Option<PatternTraceNote>,
     ) {
-        let idx = self.path.pop().expect("composite_pattern_end without composite_pattern_begin");
+        let idx = self
+            .path
+            .pop()
+            .expect("composite_pattern_end without composite_pattern_begin");
         let node = resolve_trace_node_mut(&mut self.root, &self.path, idx);
         node.succeeded = succeeded;
         node.output_line = output_line;
@@ -752,11 +779,7 @@ fn record_leaf_pattern(
 fn finish_composite_pattern(context: &OutputMatchContext<'_>, raw: &RawPatternMatch) {
     let (succeeded, output_line, note) = match raw {
         Ok(ok) => (true, ok.matched_line_if_ok.clone(), ok.note.clone()),
-        Err(err) => (
-            false,
-            err.failure.output_line.clone(),
-            err.note.clone(),
-        ),
+        Err(err) => (false, err.failure.output_line.clone(), err.note.clone()),
     };
     context
         .trace
@@ -975,7 +998,11 @@ impl OutputPatternType {
                             Ok(v) => {
                                 not_found.remove(&idx);
                                 output = v;
-                                context.trace.lock().unwrap().pop_traces_before_last(cleanup);
+                                context
+                                    .trace
+                                    .lock()
+                                    .unwrap()
+                                    .pop_traces_before_last(cleanup);
                                 continue 'outer;
                             }
                             Err(_) => {

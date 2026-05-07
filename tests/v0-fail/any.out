@@ -1,0 +1,51 @@
+Running <root>/any.cli ...
+
+printf "Lorem ipsum dolor sit amet,
+consectetur adipiscing elit, sed do
+eiusmod tempor incididunt ut labore
+et dolore magna aliqua. Ut enim ad
+minim veniam, quis nostrud exercitation
+ullamco laboris nisi ut aliquip ex ea
+commodo consequat. Duis aute irure dolor
+in reprehenderit in voluptate velit esseX
+cillum dolore eu fugiat nulla pariatur.
+Excepteur sint occaecat cupidatat non
+proident, sunt in culpa qui officia
+deserunt mollit anim id est laborum."
+---
+Lorem ipsum dolor sit amet,
+consectetur adipiscing elit, sed do
+eiusmod tempor incididunt ut labore
+et dolore magna aliqua. Ut enim ad
+minim veniam, quis nostrud exercitation
+ullamco laboris nisi ut aliquip ex ea
+commodo consequat. Duis aute irure dolor
+in reprehenderit in voluptate velit esseX
+cillum dolore eu fugiat nulla pariatur.
+Excepteur sint occaecat cupidatat non
+proident, sunt in culpa qui officia
+deserunt mollit anim id est laborum.
+---
+ERROR: pattern literal at line <root>/any.cli:19 does not match output line "<eof>"
+[XX] missed sequence { ... }
+  [OK] matched "Lorem ipsum dolor sit amet,"
+  [OK] matched * ... "ullamco laboris nisi ut aliquip ex ea"
+    [XX] missed "ullamco laboris nisi ut aliquip ex ea" != "consectetur adipiscing elit, sed do"
+    [XX] missed "ullamco laboris nisi ut aliquip ex ea" != "eiusmod tempor incididunt ut labore"
+    [XX] missed "ullamco laboris nisi ut aliquip ex ea" != "et dolore magna aliqua. Ut enim ad"
+    [XX] missed "ullamco laboris nisi ut aliquip ex ea" != "minim veniam, quis nostrud exercitation"
+    [OK] matched "ullamco laboris nisi ut aliquip ex ea"
+  [XX] missed * ... "proident, sunt in culpa qui officiaX"
+    [XX] missed "proident, sunt in culpa qui officiaX" != "commodo consequat. Duis aute irure dolor"
+    [XX] missed "proident, sunt in culpa qui officiaX" != "in reprehenderit in voluptate velit esseX"
+    [XX] missed "proident, sunt in culpa qui officiaX" != "cillum dolore eu fugiat nulla pariatur."
+    [XX] missed "proident, sunt in culpa qui officiaX" != "Excepteur sint occaecat cupidatat non"
+    [XX] missed "proident, sunt in culpa qui officiaX" != "proident, sunt in culpa qui officia"
+    [XX] missed "proident, sunt in culpa qui officiaX" != "deserunt mollit anim id est laborum."
+    [XX] missed "proident, sunt in culpa qui officiaX" != <eof>
+
+❌ FAIL
+
+<root>/any.cli FAILED
+Error: pattern literal at line <root>/any.cli:19 does not match output line "<eof>"
+

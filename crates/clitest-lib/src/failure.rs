@@ -29,10 +29,12 @@ impl OutputPatternMatchFailure {
 }
 
 fn trace_shows_output_line(pattern: &OutputPatternType, success: bool) -> bool {
-    matches!(
-        (pattern, success),
-        (OutputPatternType::Pattern(_), _) | (OutputPatternType::Any(_), _) | (OutputPatternType::Literal(_), false)
-    )
+    match (pattern, success) {
+        (OutputPatternType::Pattern(_), _)
+        | (OutputPatternType::Literal(_), false)
+        | (OutputPatternType::End, false) => true,
+        _ => false,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -75,11 +77,7 @@ impl OutputMatchTraceNode {
         } else {
             _ = write!(out, " missed ");
         }
-        if self.pattern.is_container() {
-            _ = write!(out, "{} {{ ... }}", self.pattern.keyword());
-        } else {
-            _ = write!(out, "{:?}", self.pattern);
-        }
+        _ = write!(out, "{}", self.pattern.trace_string());
 
         let show_line = trace_shows_output_line(&self.pattern, self.succeeded);
         if show_line {
