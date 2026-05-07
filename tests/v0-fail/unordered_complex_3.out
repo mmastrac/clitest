@@ -1,0 +1,38 @@
+Running <root>/unordered_complex_3.cli ...
+
+printf "repeat,repeat,repeat,a,b,c,u1,u2,u3,repeat" | tr ',' '\n'
+---
+repeat
+repeat
+repeat
+a
+b
+c
+u1
+u2
+u3
+repeat
+---
+ERROR: pattern end at line <root>/unordered_complex_3.cli:3 does not match output line "repeat"
+[XX] missed sequence { ... }
+  [OK] matched unordered { ... }
+    [OK] matched repeat { ... }
+      [OK] matched "repeat"
+      [OK] matched "repeat"
+      [OK] matched "repeat"
+      [XX] missed "repeat" != "a"
+    [OK] matched sequence { ... }
+      [OK] matched "a"
+      [OK] matched "b"
+      [OK] matched "c"
+    [OK] matched unordered { ... }
+      [OK] matched "u1"
+      [OK] matched "u2"
+      [OK] matched "u3"
+  [XX] missed <eof> != "repeat"
+
+❌ FAIL
+
+<root>/unordered_complex_3.cli FAILED
+Error: pattern end at line <root>/unordered_complex_3.cli:3 does not match output line "repeat"
+

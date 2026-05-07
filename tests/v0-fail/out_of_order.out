@@ -1,0 +1,29 @@
+Running <root>/out_of_order.cli ...
+
+printf '{"name": "Alice"}\n{"name": "Mary"}\n{"name": "John"}\n'
+---
+{"name": "Alice"}
+{"name": "Mary"}
+{"name": "John"}
+---
+✅ OK
+
+printf '{"name": "Alice"}\n{"name": "Mary"}\n{"name": "John"}\n'
+---
+{"name": "Alice"}
+{"name": "Mary"}
+{"name": "John"}
+---
+ERROR: pattern unordered at line <root>/out_of_order.cli:12 does not match output line "<eof>"
+[XX] missed sequence { ... }
+  [OK] matched "{\"name\": \"Alice\"}"
+  [XX] missed unordered { ... }
+    [OK] matched "{\"name\": \"Mary\"}"
+    [OK] matched "{\"name\": \"John\"}"
+    [XX] missed "{\"name\": \"Bob\"}" != <eof>
+
+❌ FAIL
+
+<root>/out_of_order.cli FAILED
+Error: pattern unordered at line <root>/out_of_order.cli:12 does not match output line "<eof>"
+

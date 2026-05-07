@@ -6,13 +6,10 @@ hello
 world
 ---
 ERROR: pattern literal at line <root>/ignore.cli:7 does not match output line "world"
-matching Sequence([Literal(goodbye), End])
-  matching Literal(goodbye)
-  -matching Literal(hello)
-  -literal match: "hello" == "hello"
-  -matching Literal(hello)
-  -literal FAILED match: "world" == "hello"
-  literal FAILED match: "world" == "goodbye"
+[XX] missed sequence { ... }
+  [OK]- matched "hello" (ignore)
+  [XX]- missed "hello" != "world" (ignore)
+  [XX] missed "goodbye" != "world"
 
 ❌ FAIL
 

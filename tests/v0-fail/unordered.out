@@ -6,13 +6,11 @@ a
 b
 ---
 ERROR: pattern unordered at line <root>/unordered.cli:4 does not match output line "<eof>"
-matching Sequence([Unordered([Literal(a), Literal(b), Literal(c)]), End])
-  matching Unordered([Literal(a), Literal(b), Literal(c)])
-    matching Literal(a)
-    literal match: "a" == "a"
-    matching Literal(b)
-    literal match: "b" == "b"
-    matching Literal(c)
+[XX] missed sequence { ... }
+  [XX] missed unordered { ... }
+    [OK] matched "a"
+    [OK] matched "b"
+    [XX] missed "c" != <eof>
 
 ❌ FAIL
 

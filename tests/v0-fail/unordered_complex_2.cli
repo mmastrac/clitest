@@ -1,0 +1,18 @@
+#!/usr/bin/env clitest --v0
+
+$ printf "a,b,c,u1,repeat,u2,u3" | tr ',' '\n'
+unordered {
+    sequence {
+        ! a
+        ! b
+        ! c
+    }
+    unordered {
+        ! u1
+        ! u2
+        ! u3
+    }
+    repeat {
+        ! repeat
+    }
+}

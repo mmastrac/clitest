@@ -14,6 +14,7 @@ use termcolor::{Color, ColorChoice, WriteColor};
 
 use crate::{
     command::{CommandLine, CommandResult},
+    failure::{OutputPatternMatchFailure, format_match_trace_tree},
     util::{NicePathBuf, NiceTempDir},
 };
 use crate::{cwrite, cwriteln, cwriteln_rule};
@@ -1668,10 +1669,7 @@ impl ScriptCommand {
                 if self.expect_failure {
                     PatternResult::MatchesFailure
                 } else {
-                    let mut trace = String::new();
-                    for line in match_context.traces() {
-                        trace.push_str(&format!("{line}\n"));
-                    }
+                    let trace = format_match_trace_tree(&match_context.traces());
                     PatternResult::Mismatch(e, trace)
                 }
             }

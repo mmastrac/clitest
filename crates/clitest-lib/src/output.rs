@@ -6,7 +6,11 @@ use std::{
 use grok::Grok;
 use serde::Serialize;
 
-use crate::script::{IfCondition, ScriptLocation, ScriptRunContext};
+use crate::failure::OutputPatternMatchFailure;
+use crate::{
+    failure::{OutputMatchTraceNode, PatternTraceNote},
+    script::{IfCondition, ScriptLocation, ScriptRunContext},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Line {
@@ -443,6 +447,64 @@ impl OutputPatternType {
             OutputPatternType::End => 0,
         }
     }
+
+    pub fn keyword(&self) -> &'static str {
+        match self {
+            OutputPatternType::Literal(_) => "\"...\"",
+            OutputPatternType::Pattern(_) => "? ...",
+            OutputPatternType::Repeat(_) => "repeat",
+            OutputPatternType::Optional(_) => "optional",
+            OutputPatternType::Unordered(_) => "unordered",
+            OutputPatternType::Choice(_) => "choice",
+            OutputPatternType::Sequence(_) => "sequence",
+            OutputPatternType::Not(_) => "not",
+            OutputPatternType::Any(_) => "*",
+            OutputPatternType::If(_, _) => "if",
+            OutputPatternType::End => "end",
+            OutputPatternType::None => "none",
+        }
+    }
+
+    pub fn is_container(&self) -> bool {
+        match self {
+            OutputPatternType::Literal(_) => false,
+            OutputPatternType::Pattern(_) => false,
+            OutputPatternType::Repeat(_) => true,
+            OutputPatternType::Optional(_) => true,
+            OutputPatternType::Unordered(_) => true,
+            OutputPatternType::Choice(_) => true,
+            OutputPatternType::Sequence(_) => true,
+            OutputPatternType::Not(_) => true,
+            OutputPatternType::Any(_) => false,
+            OutputPatternType::If(_, _) => true,
+            OutputPatternType::End => false,
+            OutputPatternType::None => false,
+        }
+    }
+
+    pub fn trace_string(&self) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        _ = match self {
+            OutputPatternType::Any(pattern) => {
+                if let OutputPatternType::End = pattern.pattern {
+                    write!(out, "*")
+                } else {
+                    write!(out, "* ... {}", pattern.pattern.trace_string())
+                }
+            }
+            OutputPatternType::End => {
+                write!(out, "<eof>")
+            }
+            _ if self.is_container() => {
+                write!(out, "{} {{ ... }}", self.keyword())
+            }
+            _ => {
+                write!(out, "{:?}", self)
+            }
+        };
+        out
+    }
 }
 
 impl Default for OutputPatternType {
@@ -454,7 +516,7 @@ impl Default for OutputPatternType {
 impl std::fmt::Debug for OutputPatternType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OutputPatternType::Literal(literal) => write!(f, "Literal({literal})"),
+            OutputPatternType::Literal(literal) => write!(f, "{literal:?}"),
             OutputPatternType::Pattern(pattern) => write!(f, "Pattern({pattern:?})"),
             OutputPatternType::Repeat(pattern) => write!(f, "Repeat({pattern:?})"),
             OutputPatternType::Optional(pattern) => write!(f, "Optional({pattern:?})"),
@@ -560,44 +622,175 @@ impl GrokPattern {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
-#[display("pattern {pattern_type} at line {location} {verb} output line {line:?}", verb = self.verb(), line = self.line())]
-pub struct OutputPatternMatchFailure {
-    pub location: ScriptLocation,
-    pub pattern_type: &'static str,
-    pub output_line: Option<Line>,
+#[derive(Debug, Default)]
+struct OutputMatchTraceCollector {
+    root: Vec<OutputMatchTraceNode>,
+    /// Path of indices from [`Self::root`] down to the [`OutputMatchTraceNode`] whose
+    /// [`OutputMatchTraceNode::children`] receives nested pattern nodes.
+    path: Vec<usize>,
 }
 
-impl OutputPatternMatchFailure {
-    fn verb(&self) -> &'static str {
-        if self.pattern_type == "reject" {
-            "rejected"
-        } else {
-            "does not match"
+fn resolve_trace_node_mut<'a>(
+    root: &'a mut Vec<OutputMatchTraceNode>,
+    path: &[usize],
+    idx: usize,
+) -> &'a mut OutputMatchTraceNode {
+    let mut cur = root;
+    for &p in path {
+        cur = &mut cur[p].children;
+    }
+    &mut cur[idx]
+}
+
+impl OutputMatchTraceCollector {
+    fn navigate_mut<'a>(&'a mut self) -> &'a mut Vec<OutputMatchTraceNode> {
+        let mut cur = &mut self.root;
+        for &idx in &self.path {
+            cur = &mut cur[idx].children;
         }
+        cur
     }
 
-    fn line(&self) -> String {
-        self.output_line
-            .as_ref()
-            .map(|l| l.text.clone())
-            .unwrap_or("<eof>".to_string())
+    fn composite_pattern_begin(&mut self, pattern: OutputPatternType, ignore: bool) {
+        let list = self.navigate_mut();
+        let idx = list.len();
+        list.push(OutputMatchTraceNode {
+            ignore,
+            pattern,
+            succeeded: false,
+            output_line: None,
+            note: None,
+            children: Vec::new(),
+        });
+        self.path.push(idx);
+    }
+
+    fn composite_pattern_end(
+        &mut self,
+        succeeded: bool,
+        output_line: Option<Line>,
+        note: Option<PatternTraceNote>,
+    ) {
+        let idx = self
+            .path
+            .pop()
+            .expect("composite_pattern_end without composite_pattern_begin");
+        let node = resolve_trace_node_mut(&mut self.root, &self.path, idx);
+        node.succeeded = succeeded;
+        node.output_line = output_line;
+        node.note = note;
+    }
+
+    fn pop_traces_before_last(&mut self, count: usize) {
+        let trace = self.navigate_mut().pop().expect("no trace to pop");
+        for _ in 0..count {
+            self.navigate_mut().pop().expect("no trace to pop");
+        }
+        self.navigate_mut().push(trace);
+    }
+
+    fn leaf_pattern(&mut self, node: OutputMatchTraceNode) {
+        let list = self.navigate_mut();
+        list.push(node);
+    }
+
+    fn take_root(&mut self) -> Vec<OutputMatchTraceNode> {
+        self.path.clear();
+        std::mem::take(&mut self.root)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct OutputMatchContext<'s> {
-    depth: usize,
-    trace: Arc<Mutex<Vec<String>>>,
+    trace: Arc<Mutex<OutputMatchTraceCollector>>,
     ignore: bool,
     expectations: Arc<Mutex<HashMap<String, String>>>,
     script_context: &'s ScriptRunContext,
 }
 
+/// Successful internal match before trace decoration.
+struct RawPatternOk {
+    lines: Lines,
+    matched_line_if_ok: Option<Line>,
+    /// Used by composites such as [`OutputPatternType::If`] (branch annotation).
+    note: Option<PatternTraceNote>,
+}
+
+/// Failed internal match before trace decoration.
+struct RawPatternErr {
+    failure: OutputPatternMatchFailure,
+    note: Option<PatternTraceNote>,
+}
+
+impl From<OutputPatternMatchFailure> for RawPatternErr {
+    fn from(failure: OutputPatternMatchFailure) -> Self {
+        Self {
+            failure,
+            note: None,
+        }
+    }
+}
+
+/// Internal [`OutputPatternType::raw_matches`] result before public [`Result`] mapping.
+type RawPatternMatch = Result<RawPatternOk, RawPatternErr>;
+
+fn raw_ok(lines: Lines, matched_line_if_ok: Option<Line>) -> RawPatternMatch {
+    Ok(RawPatternOk {
+        lines,
+        matched_line_if_ok,
+        note: None,
+    })
+}
+
+fn raw_err(failure: OutputPatternMatchFailure, note: Option<PatternTraceNote>) -> RawPatternMatch {
+    Err(RawPatternErr { failure, note })
+}
+
+fn raw_into_public(raw: RawPatternMatch) -> Result<Lines, OutputPatternMatchFailure> {
+    raw.map(|ok| ok.lines).map_err(|e| e.failure)
+}
+
+fn record_leaf_pattern(
+    context: &OutputMatchContext<'_>,
+    pattern: OutputPatternType,
+    raw: &RawPatternMatch,
+) {
+    let node = match raw {
+        Ok(ok) => OutputMatchTraceNode {
+            ignore: context.ignore,
+            pattern,
+            succeeded: true,
+            output_line: ok.matched_line_if_ok.clone(),
+            note: ok.note.clone(),
+            children: Vec::new(),
+        },
+        Err(err) => OutputMatchTraceNode {
+            ignore: context.ignore,
+            pattern,
+            succeeded: false,
+            output_line: err.failure.output_line.clone(),
+            note: err.note.clone(),
+            children: Vec::new(),
+        },
+    };
+    context.trace.lock().unwrap().leaf_pattern(node);
+}
+
+fn finish_composite_pattern(context: &OutputMatchContext<'_>, raw: &RawPatternMatch) {
+    let (succeeded, output_line, note) = match raw {
+        Ok(ok) => (true, ok.matched_line_if_ok.clone(), ok.note.clone()),
+        Err(err) => (false, err.failure.output_line.clone(), err.note.clone()),
+    };
+    context
+        .trace
+        .lock()
+        .unwrap()
+        .composite_pattern_end(succeeded, output_line, note);
+}
+
 impl<'s> OutputMatchContext<'s> {
     pub fn new(script_context: &'s ScriptRunContext) -> Self {
         Self {
-            depth: 0,
             trace: Default::default(),
             ignore: false,
             script_context,
@@ -605,9 +798,9 @@ impl<'s> OutputMatchContext<'s> {
         }
     }
 
+    /// Cheap clone passed into nested [`OutputPattern::matches`] calls.
     pub fn descend(&self) -> Self {
         Self {
-            depth: self.depth + 1,
             trace: self.trace.clone(),
             ignore: self.ignore,
             script_context: self.script_context,
@@ -615,9 +808,15 @@ impl<'s> OutputMatchContext<'s> {
         }
     }
 
+    pub fn composite_pattern_begin(&self, pattern: OutputPatternType) {
+        self.trace
+            .lock()
+            .unwrap()
+            .composite_pattern_begin(pattern, self.ignore);
+    }
+
     pub fn ignore(&self) -> Self {
         Self {
-            depth: self.depth,
             trace: self.trace.clone(),
             ignore: true,
             script_context: self.script_context,
@@ -625,18 +824,8 @@ impl<'s> OutputMatchContext<'s> {
         }
     }
 
-    pub fn trace(&self, line: &str) {
-        let ignore = if self.ignore { "-" } else { "" };
-        self.trace.lock().unwrap().push(format!(
-            "{:indent$}{ignore}{}",
-            "",
-            line,
-            indent = self.depth * 2
-        ));
-    }
-
-    pub fn traces(&self) -> Vec<String> {
-        std::mem::take(&mut self.trace.lock().unwrap())
+    pub fn traces(&self) -> Vec<OutputMatchTraceNode> {
+        self.trace.lock().unwrap().take_root()
     }
 
     pub fn expect(&self, key: &str, value: String) {
@@ -656,55 +845,94 @@ impl OutputPatternType {
         &self,
         location: &ScriptLocation,
         context: OutputMatchContext,
-        mut output: Lines,
+        output: Lines,
     ) -> Result<Lines, OutputPatternMatchFailure> {
-        context.trace(&format!("matching {self:?}"));
         match self {
-            OutputPatternType::None => Ok(output),
+            OutputPatternType::None
+            | OutputPatternType::Literal(_)
+            | OutputPatternType::Pattern(_)
+            | OutputPatternType::End => {
+                let raw = self.raw_matches(location, &context, output);
+                record_leaf_pattern(&context, self.clone(), &raw);
+                raw_into_public(raw)
+            }
+            _ => {
+                context.composite_pattern_begin(self.clone());
+                let raw = self.raw_matches(location, &context, output);
+                finish_composite_pattern(&context, &raw);
+                raw_into_public(raw)
+            }
+        }
+    }
+
+    fn raw_matches(
+        &self,
+        location: &ScriptLocation,
+        context: &OutputMatchContext<'_>,
+        mut output: Lines,
+    ) -> RawPatternMatch {
+        match self {
+            OutputPatternType::None => raw_ok(output, None),
             OutputPatternType::Literal(literal) => {
-                let (line, next) = output.next(context.clone())?;
-                if let Some(line) = line {
-                    let text = line.text.trim_end();
-                    if text == literal {
-                        context.trace(&format!("literal match: {:?} == {literal:?}", line.text));
-                        Ok(next)
-                    } else if line.text.contains('\x1b')
-                        && fast_strip_ansi::strip_ansi_string(&line.text).as_ref() == literal
-                    {
-                        context.trace(&format!("literal match: {text:?} == {literal:?}"));
-                        Ok(next)
-                    } else {
-                        context.trace(&format!(
-                            "literal FAILED match: {:?} == {literal:?}",
-                            line.text
-                        ));
-                        Err(OutputPatternMatchFailure {
+                let (line, next) = output.next(context.clone()).map_err(RawPatternErr::from)?;
+                let Some(line) = line else {
+                    return raw_err(
+                        OutputPatternMatchFailure {
                             location: location.clone(),
                             pattern_type: "literal",
-                            output_line: Some(line),
-                        })
-                    }
+                            output_line: None,
+                        },
+                        None,
+                    );
+                };
+                let text = line.text.trim_end();
+                if text == literal
+                    || (line.text.contains('\x1b')
+                        && fast_strip_ansi::strip_ansi_string(&line.text).as_ref() == literal)
+                {
+                    raw_ok(next, Some(line.clone()))
                 } else {
-                    Err(OutputPatternMatchFailure {
-                        location: location.clone(),
-                        pattern_type: "literal",
-                        output_line: None,
-                    })
+                    raw_err(
+                        OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "literal",
+                            output_line: Some(line.clone()),
+                        },
+                        None,
+                    )
                 }
             }
             OutputPatternType::Pattern(pattern) => {
-                let (line, next) = output.next(context.clone())?;
-                if let Some(line) = line {
-                    let mut text = line.text.clone();
-                    let mut res = pattern.matches(&text);
-                    if res.is_none() {
-                        // Give it a second chance with the ANSI-stripped text IF we detect escape sequences
-                        if text.contains('\x1b') {
-                            text = fast_strip_ansi::strip_ansi_string(&text).into_owned();
-                            res = pattern.matches(&text);
-                        }
+                let (line, next) = output.next(context.clone()).map_err(RawPatternErr::from)?;
+                let Some(line) = line else {
+                    return raw_err(
+                        OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "pattern",
+                            output_line: None,
+                        },
+                        None,
+                    );
+                };
+                let mut text = line.text.clone();
+                let mut res = pattern.matches(&text);
+                if res.is_none() {
+                    // Give it a second chance with the ANSI-stripped text IF we detect escape sequences
+                    if text.contains('\x1b') {
+                        text = fast_strip_ansi::strip_ansi_string(&text).into_owned();
+                        res = pattern.matches(&text);
                     }
-                    if let Some(matches) = res {
+                }
+                match res {
+                    None => raw_err(
+                        OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "pattern",
+                            output_line: Some(line.clone()),
+                        },
+                        None,
+                    ),
+                    Some(matches) => {
                         for alias in &pattern.aliases {
                             if let Some(value) = matches.get(alias) {
                                 let existing = context
@@ -715,156 +943,166 @@ impl OutputPatternType {
                                 if let Some(existing) = existing
                                     && existing != value
                                 {
-                                    context.trace(&format!(
-                                        "pattern alias FAILED match: {existing:?} != {value:?}",
-                                    ));
-                                    return Err(OutputPatternMatchFailure {
-                                        location: location.clone(),
-                                        pattern_type: "pattern",
-                                        output_line: Some(line),
-                                    });
+                                    return raw_err(
+                                        OutputPatternMatchFailure {
+                                            location: location.clone(),
+                                            pattern_type: "pattern",
+                                            output_line: Some(line.clone()),
+                                        },
+                                        Some(PatternTraceNote::AliasMismatch(
+                                            existing,
+                                            value.to_string(),
+                                        )),
+                                    );
                                 }
                             }
                         }
-                        context.trace(&format!("pattern match: {:?} =~ {pattern:?}", line.text));
-                        Ok(next)
-                    } else {
-                        context.trace(&format!(
-                            "pattern FAILED match: {:?} =~ {pattern:?}",
-                            line.text
-                        ));
-                        Err(OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "pattern",
-                            output_line: Some(line),
-                        })
+                        raw_ok(next, Some(line.clone()))
                     }
-                } else {
-                    Err(OutputPatternMatchFailure {
-                        location: location.clone(),
-                        pattern_type: "pattern",
-                        output_line: None,
-                    })
                 }
             }
             OutputPatternType::Sequence(patterns) => {
                 for pattern in patterns {
-                    match pattern.matches(context.descend(), output) {
-                        Ok(v) => {
-                            output = v;
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    }
+                    output = pattern
+                        .matches(context.descend(), output)
+                        .map_err(RawPatternErr::from)?;
                 }
-                Ok(output)
+                raw_ok(output, None)
             }
             OutputPatternType::Repeat(pattern) => {
-                // Mandatory first match
-                let mut output = pattern.matches(context.descend(), output)?;
-                // Any number of additional matches, greedy
+                let mut output = pattern
+                    .matches(context.descend(), output)
+                    .map_err(RawPatternErr::from)?;
                 loop {
                     match pattern.matches(context.descend(), output.clone()) {
-                        Ok(new_rest) => {
-                            output = new_rest;
-                        }
-                        Err(_) => break Ok(output),
+                        Ok(new_rest) => output = new_rest,
+                        Err(_) => break,
                     }
                 }
+                raw_ok(output, None)
             }
             OutputPatternType::Optional(pattern) => {
-                // Never fails
-                match pattern.matches(context.descend(), output.clone()) {
-                    Ok(v) => Ok(v),
-                    Err(_) => Ok(output),
-                }
+                let lines = match pattern.matches(context.descend(), output.clone()) {
+                    Ok(v) => v,
+                    Err(_) => output,
+                };
+                raw_ok(lines, None)
             }
             OutputPatternType::Unordered(patterns) => {
-                // Found is initialized with 0..patterns.len()
                 let mut not_found = (0..patterns.len()).collect::<BTreeSet<_>>();
                 'outer: while !not_found.is_empty() {
-                    for pattern in &not_found {
-                        let pattern = *pattern;
-                        match patterns[pattern].matches(context.descend(), output.clone()) {
+                    let mut cleanup = 0;
+                    for idx in &not_found {
+                        let idx = *idx;
+                        match patterns[idx].matches(context.descend(), output.clone()) {
                             Ok(v) => {
-                                not_found.remove(&pattern);
+                                not_found.remove(&idx);
                                 output = v;
+                                context
+                                    .trace
+                                    .lock()
+                                    .unwrap()
+                                    .pop_traces_before_last(cleanup);
                                 continue 'outer;
                             }
-                            Err(_) => {}
+                            Err(_) => {
+                                cleanup += 1;
+                            }
                         }
                     }
-                    return Err(OutputPatternMatchFailure {
-                        location: location.clone(),
-                        pattern_type: "unordered",
-                        output_line: output.next_line(),
-                    });
+                    return raw_err(
+                        OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "unordered",
+                            output_line: output.next_line(),
+                        },
+                        None,
+                    );
                 }
-                Ok(output)
+                raw_ok(output, None)
             }
             OutputPatternType::Choice(patterns) => {
                 for pattern in patterns {
                     if let Ok(v) = pattern.matches(context.descend(), output.clone()) {
-                        return Ok(v);
+                        return Ok(RawPatternOk {
+                            lines: v,
+                            matched_line_if_ok: None,
+                            note: None,
+                        });
                     }
                 }
-                Err(OutputPatternMatchFailure {
-                    location: location.clone(),
-                    pattern_type: "choice",
-                    output_line: output.next_line(),
-                })
+                raw_err(
+                    OutputPatternMatchFailure {
+                        location: location.clone(),
+                        pattern_type: "choice",
+                        output_line: output.next_line(),
+                    },
+                    None,
+                )
             }
             OutputPatternType::Not(pattern) => {
-                // Negative lookahead
                 if pattern.matches(context.descend(), output.clone()).is_err() {
-                    Ok(output)
+                    raw_ok(output, None)
                 } else {
-                    Err(OutputPatternMatchFailure {
-                        location: location.clone(),
-                        pattern_type: "not",
-                        output_line: output.next_line(),
-                    })
+                    raw_err(
+                        OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "not",
+                            output_line: output.next_line(),
+                        },
+                        None,
+                    )
                 }
             }
-            OutputPatternType::Any(until) => {
-                loop {
-                    match until.matches(context.descend(), output.clone()) {
-                        Ok(v) => {
-                            output = v;
-                            break Ok(output);
-                        }
-                        Err(e) => {
-                            // Eat one line and try again
-                            let (line, next) = output.next(context.clone())?;
-                            if line.is_some() {
-                                output = next;
-                            } else {
-                                break Err(e);
-                            }
-                        }
+            OutputPatternType::Any(until) => loop {
+                match until.matches(context.descend(), output.clone()) {
+                    Ok(v) => {
+                        output = v;
+                        break raw_ok(output, None);
                     }
+                    Err(e) => match output.next(context.clone()) {
+                        Err(failure) => break Err(failure.into()),
+                        Ok((Some(_), next)) => output = next,
+                        Ok((None, _)) => break Err(e.into()),
+                    },
                 }
-            }
+            },
             OutputPatternType::If(condition, pattern) => {
-                if condition.matches(context.script_context) {
-                    context.trace(&format!("if match: {condition:?}"));
+                let branch_met = condition.matches(context.script_context);
+                let branch_note = if branch_met {
+                    PatternTraceNote::IfConditionMet(condition.clone())
+                } else {
+                    PatternTraceNote::IfConditionSkipped(condition.clone())
+                };
+                let inner = if branch_met {
                     pattern.matches(context.clone(), output.clone())
                 } else {
-                    context.trace(&format!("if FAILED match: {condition:?}"));
                     Ok(output)
-                }
+                };
+                inner
+                    .map(|lines| RawPatternOk {
+                        lines,
+                        matched_line_if_ok: None,
+                        note: Some(branch_note.clone()),
+                    })
+                    .map_err(|failure| RawPatternErr {
+                        failure,
+                        note: Some(branch_note),
+                    })
             }
             OutputPatternType::End => {
-                let (line, next) = output.next(context)?;
+                let (line, next) = output.next(context.clone()).map_err(RawPatternErr::from)?;
                 if let Some(line) = line {
-                    Err(OutputPatternMatchFailure {
-                        location: location.clone(),
-                        pattern_type: "end",
-                        output_line: Some(line),
-                    })
+                    raw_err(
+                        OutputPatternMatchFailure {
+                            location: location.clone(),
+                            pattern_type: "end",
+                            output_line: Some(line),
+                        },
+                        None,
+                    )
                 } else {
-                    Ok(next)
+                    raw_ok(next, None)
                 }
             }
         }
