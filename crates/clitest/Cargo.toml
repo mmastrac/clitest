@@ -15,10 +15,12 @@ clitest-lib.workspace = true
 clap = { workspace = true, features = ["derive"] }
 termcolor.workspace = true
 termimad.workspace = true
-dunce.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 toml.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+dunce.workspace = true
 
 [[bin]]
 name = "clitest"
