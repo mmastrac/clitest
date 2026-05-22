@@ -33,3 +33,11 @@ jobs:
             ${{ runner.os }}-cargo-${{ env.CACHE_KEY }}-
       - name: Run tests
         run: cargo test
+
+  nix-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Build default.nix
+        run: nix-build -E 'with import <nixpkgs> {}; callPackage ./default.nix {}'
