@@ -39,6 +39,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Build default.nix
         run: nix-build -E 'with import <nixpkgs> {}; callPackage ./default.nix {}'
