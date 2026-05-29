@@ -89,6 +89,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
+name = "bytemuck"
+version = "1.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
+
+[[package]]
 name = "cc"
 version = "1.2.62"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -147,7 +153,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clitest"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "clap",
  "clitest-lib",
@@ -171,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "clitest-lib"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "derive-io",
  "derive_more",
@@ -181,7 +187,9 @@ dependencies = [
  "grok",
  "humantime",
  "keepcalm",
+ "linktime",
  "pretty_assertions",
+ "scattered-collect",
  "serde",
  "shellish_parse",
  "signal-child",
@@ -342,6 +350,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01334b89b69ff726750c5ce5073fc8bd860e99aa9a8fc5ca11b04730e3aee97a"
+dependencies = [
+ "link-section",
+ "linktime-proc-macro",
+]
+
+[[package]]
 name = "derive-io"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,6 +434,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
+]
+
+[[package]]
+name = "dtor"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e84c00697eca0d99ddc657698f9238f7426bac392c5ea859f5efdfdd2b719dd7"
+dependencies = [
+ "linktime-proc-macro",
 ]
 
 [[package]]
@@ -634,6 +661,33 @@ checksum = "e02f3bb43d335493c96bf3fd3a321600bf6bd07ed34bc64118e9293bdffea46c"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "link-section"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a63f9687974de7e2caf6c96a1b19c6e882db299fdde09075c5b9e11c58421cd"
+dependencies = [
+ "linktime-proc-macro",
+]
+
+[[package]]
+name = "linktime"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24c0237789ca078da896c7e98f9f885790fa66c3214d5977a22718a261e1b74e"
+dependencies = [
+ "ctor",
+ "dtor",
+ "link-section",
+ "linktime-proc-macro",
+]
+
+[[package]]
+name = "linktime-proc-macro"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c7b0a3383c2a1002d11349c92c85a666a5fb679e96c79d782cf0dbe557fd6ee"
 
 [[package]]
 name = "linux-raw-sys"
@@ -910,6 +964,29 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
+name = "safe_arch"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f7caad094bd561859bcd467734a720c3c1f5d1f338995351fefe2190c45efed"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
+name = "scattered-collect"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60c604f8b89c9d0cdf7f040cb9f50e83a81306ee6149b72682d59e76fafd4e5e"
+dependencies = [
+ "ctor",
+ "link-section",
+ "linktime",
+ "linktime-proc-macro",
+ "wide",
+ "xxhash-rust",
+]
 
 [[package]]
 name = "scopeguard"
@@ -1364,6 +1441,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wide"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a7714cd0430a663154667c74da5d09325c2387695bee18b3f7f72825aa3693a"
+dependencies = [
+ "bytemuck",
+ "safe_arch",
+]
+
+[[package]]
 name = "widestring"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1708,6 +1795,12 @@ dependencies = [
  "unicode-xid",
  "wasmparser",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "yansi"

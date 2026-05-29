@@ -1,6 +1,6 @@
 Running <root>/complex_pattern_mismatch.cli ...
 
-echo "hello\nwe need a complex pattern mismatch here"
+printf "hello\nwe need a complex pattern mismatch here\n"
 ---
 hello
 we need a complex pattern mismatch here
