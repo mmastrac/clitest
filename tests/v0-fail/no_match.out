@@ -4,12 +4,12 @@ printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern literal at line <root>/no_match.cli:4 does not match output line "hello"
+ERROR: "bye" at line <root>/no_match.cli:4 does not match output line "hello"
 [XX] missed sequence { ... }
   [XX] missed "bye" != "hello"
 
 ❌ FAIL
 
 <root>/no_match.cli FAILED
-Error: pattern literal at line <root>/no_match.cli:4 does not match output line "hello"
+Error: "bye" at line <root>/no_match.cli:4 does not match output line "hello"
 

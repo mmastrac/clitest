@@ -1,0 +1,5 @@
+#!/usr/bin/env clitest --v0
+
+$ echo "hello\nwe need a complex pattern mismatch here"
+! hello
+! w%{DATA} n%{DATA} a c%{DATA} p%{DATA} mm%{DATA} h%{DATA}

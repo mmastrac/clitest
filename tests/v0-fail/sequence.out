@@ -5,7 +5,7 @@ printf "b\na\n"
 b
 a
 ---
-ERROR: pattern literal at line <root>/sequence.cli:5 does not match output line "b"
+ERROR: "a" at line <root>/sequence.cli:5 does not match output line "b"
 [XX] missed sequence { ... }
   [XX] missed sequence { ... }
     [XX] missed "a" != "b"
@@ -13,5 +13,5 @@ ERROR: pattern literal at line <root>/sequence.cli:5 does not match output line 
 ❌ FAIL
 
 <root>/sequence.cli FAILED
-Error: pattern literal at line <root>/sequence.cli:5 does not match output line "b"
+Error: "a" at line <root>/sequence.cli:5 does not match output line "b"
 

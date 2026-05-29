@@ -33,6 +33,8 @@ derive-io.workspace = true
 dunce.workspace = true
 humantime.workspace = true
 fast-strip-ansi.workspace = true
+linktime.workspace = true
+scattered-collect.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true

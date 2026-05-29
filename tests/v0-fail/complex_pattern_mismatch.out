@@ -1,0 +1,17 @@
+Running <root>/complex_pattern_mismatch.cli ...
+
+echo "hello\nwe need a complex pattern mismatch here"
+---
+hello
+we need a complex pattern mismatch here
+---
+ERROR: pattern "w%{DATA} n%{DATA} a c%{DATA} p%{DATA} mm%{DATA} h%{DATA}" at line <root>/complex_pattern_mismatch.cli:5 does not match output line "we need a complex pattern mismatch here"
+[XX] missed sequence { ... }
+  [OK] matched "hello"
+  [XX] missed pattern "w%{DATA} n%{DATA} a c%{DATA} p%{DATA} mm%{DATA} h%{DATA}" != "we need a complex pattern mismatch here"
+
+❌ FAIL
+
+<root>/complex_pattern_mismatch.cli FAILED
+Error: pattern "w%{DATA} n%{DATA} a c%{DATA} p%{DATA} mm%{DATA} h%{DATA}" at line <root>/complex_pattern_mismatch.cli:5 does not match output line "we need a complex pattern mismatch here"
+

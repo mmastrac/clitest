@@ -5,7 +5,7 @@ printf "hello\nworld\n"
 hello
 world
 ---
-ERROR: pattern literal at line <root>/ignore.cli:7 does not match output line "world"
+ERROR: "goodbye" at line <root>/ignore.cli:7 does not match output line "world"
 [XX] missed sequence { ... }
   [OK]- matched "hello" (ignore)
   [XX]- missed "hello" != "world" (ignore)
@@ -14,5 +14,5 @@ ERROR: pattern literal at line <root>/ignore.cli:7 does not match output line "w
 ❌ FAIL
 
 <root>/ignore.cli FAILED
-Error: pattern literal at line <root>/ignore.cli:7 does not match output line "world"
+Error: "goodbye" at line <root>/ignore.cli:7 does not match output line "world"
 

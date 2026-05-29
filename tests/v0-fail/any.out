@@ -26,7 +26,7 @@ Excepteur sint occaecat cupidatat non
 proident, sunt in culpa qui officia
 deserunt mollit anim id est laborum.
 ---
-ERROR: pattern literal at line <root>/any.cli:19 does not match output line "<eof>"
+ERROR: "proident, sunt in culpa qui officiaX" at line <root>/any.cli:19 does not match output
 [XX] missed sequence { ... }
   [OK] matched "Lorem ipsum dolor sit amet,"
   [OK] matched * ... "ullamco laboris nisi ut aliquip ex ea"
@@ -47,5 +47,5 @@ ERROR: pattern literal at line <root>/any.cli:19 does not match output line "<eo
 ❌ FAIL
 
 <root>/any.cli FAILED
-Error: pattern literal at line <root>/any.cli:19 does not match output line "<eof>"
+Error: "proident, sunt in culpa qui officiaX" at line <root>/any.cli:19 does not match output
 

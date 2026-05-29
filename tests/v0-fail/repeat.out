@@ -4,7 +4,7 @@ printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern literal at line <root>/repeat.cli:5 does not match output line "hello"
+ERROR: "goodbye" at line <root>/repeat.cli:5 does not match output line "hello"
 [XX] missed sequence { ... }
   [XX] missed repeat { ... }
     [XX] missed "goodbye" != "hello"
@@ -12,5 +12,5 @@ ERROR: pattern literal at line <root>/repeat.cli:5 does not match output line "h
 ❌ FAIL
 
 <root>/repeat.cli FAILED
-Error: pattern literal at line <root>/repeat.cli:5 does not match output line "hello"
+Error: "goodbye" at line <root>/repeat.cli:5 does not match output line "hello"
 
