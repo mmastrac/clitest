@@ -4,7 +4,7 @@ printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern choice at line <root>/choice.cli:4 does not match output line "hello"
+ERROR: choice { ... } at line <root>/choice.cli:4 does not match output line "hello"
 [XX] missed sequence { ... }
   [XX] missed choice { ... }
     [XX] missed "foo" != "hello"
@@ -14,5 +14,5 @@ ERROR: pattern choice at line <root>/choice.cli:4 does not match output line "he
 ❌ FAIL
 
 <root>/choice.cli FAILED
-Error: pattern choice at line <root>/choice.cli:4 does not match output line "hello"
+Error: choice { ... } at line <root>/choice.cli:4 does not match output line "hello"
 

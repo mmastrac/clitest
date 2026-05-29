@@ -4,7 +4,7 @@ printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern reject at line <root>/reject.cli:5 rejected output line "hello"
+ERROR: reject at line <root>/reject.cli:5 rejected output line "hello"
 [XX] missed *
   [OK]- matched "hello" (ignore)
   [XX] missed <eof> != "hello"
@@ -13,5 +13,5 @@ ERROR: pattern reject at line <root>/reject.cli:5 rejected output line "hello"
 ❌ FAIL
 
 <root>/reject.cli FAILED
-Error: pattern reject at line <root>/reject.cli:5 rejected output line "hello"
+Error: reject at line <root>/reject.cli:5 rejected output line "hello"
 

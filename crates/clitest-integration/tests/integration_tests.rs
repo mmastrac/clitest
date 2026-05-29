@@ -149,6 +149,13 @@ fn munge_output(root: &str, s: &str) -> String {
 }
 
 fn munge_line(root: &str, tmp: &[&str], output: &mut String, line: &str) {
+    // Normalize ASCII fallbacks so expected output matches regardless of UTF-8 locale.
+    let line = line
+        .replace("[X] FAIL", "❌ FAIL")
+        .replace("[X]-", "❌-")
+        .replace("[*] OK", "✅ OK")
+        .replace(" -> ", " → ");
+
     // Windows/Unix differs here
     #[cfg(windows)]
     let line = line.replace("exit code", "exit status");

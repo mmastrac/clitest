@@ -100,11 +100,10 @@ impl Lines {
                         .matches(context.ignore(), ignore_check.clone())
                         .is_ok()
                     {
-                        return Err(OutputPatternMatchFailure {
-                            location: rejected_pattern.location.clone(),
-                            pattern_type: "reject",
-                            output_line: next.next_line(),
-                        });
+                        return Err(OutputPatternMatchFailure::new_reject(
+                            &rejected_pattern.location,
+                            next.next_line(),
+                        ));
                     }
                 }
             }
@@ -349,7 +348,7 @@ impl Serialize for OutputPatternType {
                 serializer.serialize_str(&format!("! {literal}"))
             }
             OutputPatternType::Pattern(pattern) => {
-                serializer.serialize_str(&format!("? {}", pattern.pattern))
+                serializer.serialize_str(&pattern.display_source())
             }
             OutputPatternType::Repeat(pattern) => {
                 HashMap::from([("repeat", &pattern)]).serialize(serializer)
@@ -496,6 +495,12 @@ impl OutputPatternType {
             OutputPatternType::End => {
                 write!(out, "<eof>")
             }
+            OutputPatternType::Pattern(pattern) => {
+                write!(out, "pattern {:?}", pattern.display_source())
+            }
+            OutputPatternType::Literal(literal) => {
+                write!(out, "{literal:?}")
+            }
             _ if self.is_container() => {
                 write!(out, "{} {{ ... }}", self.keyword())
             }
@@ -537,6 +542,7 @@ impl std::fmt::Debug for OutputPatternType {
 #[derive(Serialize, derive_more::Debug)]
 #[debug("/{pattern:?}/")]
 pub struct GrokPattern {
+    original: String,
     pattern: String,
     aliases: Vec<String>,
     #[serde(skip)]
@@ -544,7 +550,11 @@ pub struct GrokPattern {
 }
 
 impl GrokPattern {
-    pub fn compile(line: &str, escape_non_grok: bool) -> Result<Self, String> {
+    pub fn display_source(&self) -> &str {
+        &self.original
+    }
+
+    pub fn compile(line: &str, original: String, escape_non_grok: bool) -> Result<Self, String> {
         use grok::parser::GrokPatternError;
         let mut test_pattern = String::new();
         let mut final_pattern = String::new();
@@ -600,6 +610,7 @@ impl GrokPattern {
             .map_err(|e| e.to_string())?;
 
         Ok(Self {
+            original,
             pattern: final_pattern,
             aliases,
             grok: OnceLock::new(),
@@ -876,14 +887,7 @@ impl OutputPatternType {
             OutputPatternType::Literal(literal) => {
                 let (line, next) = output.next(context.clone()).map_err(RawPatternErr::from)?;
                 let Some(line) = line else {
-                    return raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "literal",
-                            output_line: None,
-                        },
-                        None,
-                    );
+                    return raw_err(OutputPatternMatchFailure::new(location, None, self), None);
                 };
                 let text = line.text.trim_end();
                 if text == literal
@@ -893,11 +897,7 @@ impl OutputPatternType {
                     raw_ok(next, Some(line.clone()))
                 } else {
                     raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "literal",
-                            output_line: Some(line.clone()),
-                        },
+                        OutputPatternMatchFailure::new(location, Some(line), self),
                         None,
                     )
                 }
@@ -905,14 +905,7 @@ impl OutputPatternType {
             OutputPatternType::Pattern(pattern) => {
                 let (line, next) = output.next(context.clone()).map_err(RawPatternErr::from)?;
                 let Some(line) = line else {
-                    return raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "pattern",
-                            output_line: None,
-                        },
-                        None,
-                    );
+                    return raw_err(OutputPatternMatchFailure::new(location, None, self), None);
                 };
                 let mut text = line.text.clone();
                 let mut res = pattern.matches(&text);
@@ -925,11 +918,7 @@ impl OutputPatternType {
                 }
                 match res {
                     None => raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "pattern",
-                            output_line: Some(line.clone()),
-                        },
+                        OutputPatternMatchFailure::new(location, Some(line), self),
                         None,
                     ),
                     Some(matches) => {
@@ -944,11 +933,7 @@ impl OutputPatternType {
                                     && existing != value
                                 {
                                     return raw_err(
-                                        OutputPatternMatchFailure {
-                                            location: location.clone(),
-                                            pattern_type: "pattern",
-                                            output_line: Some(line.clone()),
-                                        },
+                                        OutputPatternMatchFailure::new(location, Some(line), self),
                                         Some(PatternTraceNote::AliasMismatch(
                                             existing,
                                             value.to_string(),
@@ -1011,11 +996,7 @@ impl OutputPatternType {
                         }
                     }
                     return raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "unordered",
-                            output_line: output.next_line(),
-                        },
+                        OutputPatternMatchFailure::new(location, output.next_line(), self),
                         None,
                     );
                 }
@@ -1032,11 +1013,7 @@ impl OutputPatternType {
                     }
                 }
                 raw_err(
-                    OutputPatternMatchFailure {
-                        location: location.clone(),
-                        pattern_type: "choice",
-                        output_line: output.next_line(),
-                    },
+                    OutputPatternMatchFailure::new(location, output.next_line(), self),
                     None,
                 )
             }
@@ -1045,11 +1022,7 @@ impl OutputPatternType {
                     raw_ok(output, None)
                 } else {
                     raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "not",
-                            output_line: output.next_line(),
-                        },
+                        OutputPatternMatchFailure::new(location, output.next_line(), self),
                         None,
                     )
                 }
@@ -1094,11 +1067,7 @@ impl OutputPatternType {
                 let (line, next) = output.next(context.clone()).map_err(RawPatternErr::from)?;
                 if let Some(line) = line {
                     raw_err(
-                        OutputPatternMatchFailure {
-                            location: location.clone(),
-                            pattern_type: "end",
-                            output_line: Some(line),
-                        },
+                        OutputPatternMatchFailure::new(location, Some(line), self),
                         None,
                     )
                 } else {

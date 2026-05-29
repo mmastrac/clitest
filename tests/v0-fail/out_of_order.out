@@ -14,7 +14,7 @@ printf '{"name": "Alice"}\n{"name": "Mary"}\n{"name": "John"}\n'
 {"name": "Mary"}
 {"name": "John"}
 ---
-ERROR: pattern unordered at line <root>/out_of_order.cli:12 does not match output line "<eof>"
+ERROR: unordered { ... } at line <root>/out_of_order.cli:12 does not match output
 [XX] missed sequence { ... }
   [OK] matched "{\"name\": \"Alice\"}"
   [XX] missed unordered { ... }
@@ -25,5 +25,5 @@ ERROR: pattern unordered at line <root>/out_of_order.cli:12 does not match outpu
 ❌ FAIL
 
 <root>/out_of_order.cli FAILED
-Error: pattern unordered at line <root>/out_of_order.cli:12 does not match output line "<eof>"
+Error: unordered { ... } at line <root>/out_of_order.cli:12 does not match output
 

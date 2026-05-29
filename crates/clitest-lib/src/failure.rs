@@ -1,17 +1,42 @@
+use std::borrow::Cow;
+
 use crate::{
     output::{Line, OutputPatternType},
     script::{IfCondition, ScriptLocation},
 };
 
 #[derive(Clone, Debug, thiserror::Error, derive_more::Display, PartialEq, Eq)]
-#[display("pattern {pattern_type} at line {location} {verb} output line {line:?}", verb = self.verb(), line = self.line())]
+#[display("{pattern_type} at line {location} {verb} {line}", verb = self.verb(), line = self.line())]
 pub struct OutputPatternMatchFailure {
-    pub location: ScriptLocation,
-    pub pattern_type: &'static str,
+    location: ScriptLocation,
+    pattern_type: Cow<'static, str>,
     pub output_line: Option<Line>,
+    pattern_label: Option<String>,
 }
 
 impl OutputPatternMatchFailure {
+    pub fn new(
+        location: &ScriptLocation,
+        line: Option<Line>,
+        pattern_type: &OutputPatternType,
+    ) -> Self {
+        Self {
+            location: location.clone(),
+            pattern_type: Cow::Owned(pattern_type.trace_string()),
+            output_line: line,
+            pattern_label: None,
+        }
+    }
+
+    pub fn new_reject(location: &ScriptLocation, line: Option<Line>) -> Self {
+        Self {
+            location: location.clone(),
+            pattern_type: Cow::Borrowed("reject"),
+            output_line: line,
+            pattern_label: None,
+        }
+    }
+
     fn verb(&self) -> &'static str {
         if self.pattern_type == "reject" {
             "rejected"
@@ -23,8 +48,8 @@ impl OutputPatternMatchFailure {
     fn line(&self) -> String {
         self.output_line
             .as_ref()
-            .map(|l| l.text.clone())
-            .unwrap_or("<eof>".to_string())
+            .map(|l| format!("output line {:?}", l.text))
+            .unwrap_or("output".to_string())
     }
 }
 

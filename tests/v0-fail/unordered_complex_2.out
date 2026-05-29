@@ -10,7 +10,7 @@ repeat
 u2
 u3
 ---
-ERROR: pattern unordered at line <root>/unordered_complex_2.cli:4 does not match output line "u1"
+ERROR: unordered { ... } at line <root>/unordered_complex_2.cli:4 does not match output line "u1"
 [XX] missed sequence { ... }
   [XX] missed unordered { ... }
     [OK] matched sequence { ... }
@@ -27,5 +27,5 @@ ERROR: pattern unordered at line <root>/unordered_complex_2.cli:4 does not match
 ❌ FAIL
 
 <root>/unordered_complex_2.cli FAILED
-Error: pattern unordered at line <root>/unordered_complex_2.cli:4 does not match output line "u1"
+Error: unordered { ... } at line <root>/unordered_complex_2.cli:4 does not match output line "u1"
 

@@ -4,7 +4,7 @@ printf "hello\n"
 ---
 hello
 ---
-ERROR: pattern literal at line <root>/optional.cli:7 does not match output line "<eof>"
+ERROR: "hello" at line <root>/optional.cli:7 does not match output
 [XX] missed sequence { ... }
   [OK] matched optional { ... }
     [OK] matched "hello"
@@ -13,5 +13,5 @@ ERROR: pattern literal at line <root>/optional.cli:7 does not match output line 
 ❌ FAIL
 
 <root>/optional.cli FAILED
-Error: pattern literal at line <root>/optional.cli:7 does not match output line "<eof>"
+Error: "hello" at line <root>/optional.cli:7 does not match output
 

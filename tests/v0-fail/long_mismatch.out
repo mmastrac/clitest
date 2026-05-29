@@ -26,7 +26,7 @@ Excepteur sint occaecat cupidatat non
 proident, sunt in culpa qui officia
 deserunt mollit anim id est laborum.
 ---
-ERROR: pattern literal at line <root>/long_mismatch.cli:23 does not match output line "in reprehenderit in voluptate velit esseX"
+ERROR: "in reprehenderit in voluptate velit esse" at line <root>/long_mismatch.cli:23 does not match output line "in reprehenderit in voluptate velit esseX"
 [XX] missed sequence { ... }
   [OK] matched "Lorem ipsum dolor sit amet,"
   [OK] matched "consectetur adipiscing elit, sed do"
@@ -40,5 +40,5 @@ ERROR: pattern literal at line <root>/long_mismatch.cli:23 does not match output
 ❌ FAIL
 
 <root>/long_mismatch.cli FAILED
-Error: pattern literal at line <root>/long_mismatch.cli:23 does not match output line "in reprehenderit in voluptate velit esseX"
+Error: "in reprehenderit in voluptate velit esse" at line <root>/long_mismatch.cli:23 does not match output line "in reprehenderit in voluptate velit esseX"
 

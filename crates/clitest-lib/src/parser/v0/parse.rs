@@ -458,6 +458,7 @@ fn parse_pattern_line(
     }
 
     let text = text.trim_end();
+    let original = text.to_string();
 
     if line_start == '!' {
         if !text.contains("%") {
@@ -469,7 +470,7 @@ fn parse_pattern_line(
             });
         }
 
-        let pattern = GrokPattern::compile(text, true).map_err(|e| {
+        let pattern = GrokPattern::compile(text, original, true).map_err(|e| {
             ScriptError::new_with_data(
                 ScriptErrorType::InvalidPattern,
                 location.clone(),
@@ -488,7 +489,7 @@ fn parse_pattern_line(
         } else {
             format!(r#"^{text}\s*$"#)
         };
-        let pattern = GrokPattern::compile(&text, false).map_err(|e| {
+        let pattern = GrokPattern::compile(&text, original, false).map_err(|e| {
             ScriptError::new_with_data(
                 ScriptErrorType::InvalidPattern,
                 location.clone(),
