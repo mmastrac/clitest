@@ -1,12 +1,14 @@
 [book]
-authors = ["Matt Mastracci"]
+authors = ["Matt Mastracci", "Estefania Barreto-Ojeda"]
 language = "en"
 src = "src"
 title = "CLI/test Documentation"
+description = "A documentation for the CLI/test tool"
 
 [preprocessor.clitest]
 
 [output.html]
+no-section-label = true
 
 # Waiting for linkcheck to update
 #[output.linkcheck]
