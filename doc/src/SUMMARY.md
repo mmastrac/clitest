@@ -18,4 +18,4 @@
 - [Advanced Features](./advanced-features.md)
 
 # Reference
-- [Reference Syntax](./reference.md)
+- [Syntax Reference](./reference.md)

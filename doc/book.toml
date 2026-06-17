@@ -3,7 +3,7 @@ authors = ["Matt Mastracci", "Estefania Barreto-Ojeda"]
 language = "en"
 src = "src"
 title = "CLI/test Documentation"
-description = "A documentation for the CLI/test tool"
+description = "Documentation and reference guide for the CLI/test tool"
 
 [preprocessor.clitest]
 

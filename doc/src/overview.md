@@ -73,8 +73,6 @@ $ cat nonexistent-file
   it directly; the shebang invokes `clitest` for you.
 - **Rust integration tests**: embed scripts in Rust tests with the `clitest!` macro from
   [clitest-lib](https://docs.rs/clitest-lib).
-- **Literate documentation**: this book uses the `clitest-mdbook` preprocessor with
-  `bash session` code blocks in these pages are real scripts executed at build time, so
-  examples cannot drift out of date.
+- The code blocks in this book are tested with the latest release of **CLI/Test*.
 
 See [Getting Started](./getting-started.md) for a feature summary, [Installation](./installation.md) to start using **CLI/test**, or [Basic Usage](./basic-usage.md) to learn the syntax.
