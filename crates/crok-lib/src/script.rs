@@ -84,6 +84,12 @@ pub struct ScriptRunArgs {
     pub simplified_output: bool,
     pub show_line_numbers: bool,
     pub runner: Option<String>,
+    /// Override the compile-time TARGET_OS.
+    pub target_os: Option<String>,
+    /// Override the compile-time TARGET_FAMILY.
+    pub target_family: Option<String>,
+    /// Override the compile-time TARGET_ARCH.
+    pub target_arch: Option<String>,
     pub quiet: bool,
     pub verbose: bool,
     pub global_timeout: Option<Duration>,
@@ -598,6 +604,16 @@ impl ScriptRunContext {
         // `Path::parent()` returns `Some("")` for a bare filename (e.g. `test.crok`)
         let script_parent = script_path.as_ref().parent().unwrap_or(Path::new(""));
         env.set_defaults(script_parent);
+
+        for (var, value) in [
+            ("TARGET_OS", &args.target_os),
+            ("TARGET_FAMILY", &args.target_family),
+            ("TARGET_ARCH", &args.target_arch),
+        ] {
+            if let Some(value) = value {
+                env.set_env(var, value);
+            }
+        }
 
         let kill = Arc::new(AtomicBool::new(false));
 

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.0 - 2026-08-09
+
+### Added
+
+- `--target-os`/`--target-family`/`--target-arch` override the compile-time
+  `TARGET_*` values, so a host-side crok can evaluate scripts for a remote
+  target it drives via `--runner`.
+- With `--runner`, script-set vars are inlined into the command as
+  `env K='v' ... sh -c '...'`, so runners that cross a process or host
+  boundary (ssh, docker exec) deliver them.
+
 ## [0.8.3] - 2026-07-15
 
 ### Fixed
