@@ -85,6 +85,18 @@ struct Args {
     #[arg(long)]
     runner: Option<String>,
 
+    /// Override TARGET_OS.
+    #[arg(long)]
+    target_os: Option<String>,
+
+    /// Override TARGET_FAMILY.
+    #[arg(long)]
+    target_family: Option<String>,
+
+    /// Override TARGET_ARCH.
+    #[arg(long)]
+    target_arch: Option<String>,
+
     /// Dump the script to JSON or TOML.
     #[arg(long)]
     dump: Option<DumpFormat>,
@@ -158,6 +170,9 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             ignore_exit_codes: args.ignore_exit_codes,
             ignore_matches: args.ignore_matches,
             runner: args.runner.clone(),
+            target_os: args.target_os.clone(),
+            target_family: args.target_family.clone(),
+            target_arch: args.target_arch.clone(),
             show_line_numbers: args.show_line_numbers,
             quiet: args.quiet,
             no_color: false,
